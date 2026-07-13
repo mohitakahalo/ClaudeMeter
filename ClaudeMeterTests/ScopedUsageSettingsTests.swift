@@ -13,21 +13,22 @@ final class ScopedUsageSettingsTests: XCTestCase {
     func test_decode_withLegacyShowSonnetTrue_showsSonnet() throws {
         let settings = try decodeSettings(#"{"show_sonnet_usage": true}"#)
 
-        XCTAssertTrue(settings.hiddenScopedModels.isEmpty)
+        XCTAssertEqual(settings.shownScopedModels, ["Sonnet"])
         XCTAssertTrue(settings.isScopedModelShown("Sonnet"))
     }
 
-    func test_decode_withLegacyShowSonnetFalse_keepsSonnetHidden() throws {
-        let settings = try decodeSettings(#"{"show_sonnet_usage": false}"#)
+    func test_decode_withLegacyShowSonnetTrue_doesNotOptIntoOtherModels() throws {
+        let settings = try decodeSettings(#"{"show_sonnet_usage": true}"#)
 
-        XCTAssertEqual(settings.hiddenScopedModels, ["Sonnet"])
-        XCTAssertFalse(settings.isScopedModelShown("Sonnet"))
+        XCTAssertFalse(settings.isScopedModelShown("Fable"))
     }
 
-    func test_decode_withLegacyShowSonnetFalse_stillShowsOtherModels() throws {
+    func test_decode_withLegacyShowSonnetFalse_showsNothing() throws {
         let settings = try decodeSettings(#"{"show_sonnet_usage": false}"#)
 
-        XCTAssertTrue(settings.isScopedModelShown("Fable"))
+        XCTAssertTrue(settings.shownScopedModels.isEmpty)
+        XCTAssertFalse(settings.isScopedModelShown("Sonnet"))
+        XCTAssertFalse(settings.isScopedModelShown("Fable"))
     }
 
     /// The settings shape written by the 1.4.0 release.
@@ -44,34 +45,34 @@ final class ScopedUsageSettingsTests: XCTestCase {
         XCTAssertFalse(settings.isColoredIcon)
         XCTAssertEqual(settings.refreshInterval, 60)
 
-        // The Sonnet opt-out is preserved, and does not suppress Fable
+        // The Sonnet opt-out is preserved, and nothing is opted in on the user's behalf
         XCTAssertFalse(settings.isScopedModelShown("Sonnet"))
-        XCTAssertTrue(settings.isScopedModelShown("Fable"))
-    }
-
-    func test_decode_withHiddenScopedModels_roundTrips() throws {
-        let settings = try decodeSettings(#"{"hidden_scoped_models": ["Fable"]}"#)
-
         XCTAssertFalse(settings.isScopedModelShown("Fable"))
-        XCTAssertTrue(settings.isScopedModelShown("Opus"))
     }
 
-    func test_decode_withNeitherKey_showsEverything() throws {
+    func test_decode_withShownScopedModels_roundTrips() throws {
+        let settings = try decodeSettings(#"{"shown_scoped_models": ["Fable"]}"#)
+
+        XCTAssertTrue(settings.isScopedModelShown("Fable"))
+        XCTAssertFalse(settings.isScopedModelShown("Opus"))
+    }
+
+    func test_decode_withNeitherKey_showsNothing() throws {
         let settings = try decodeSettings("{}")
 
-        XCTAssertTrue(settings.hiddenScopedModels.isEmpty)
-        XCTAssertTrue(settings.isScopedModelShown("Fable"))
+        XCTAssertTrue(settings.shownScopedModels.isEmpty)
+        XCTAssertFalse(settings.isScopedModelShown("Fable"))
     }
 
     func test_setScopedModel_togglesVisibility() {
         var settings = AppSettings.default
 
-        settings.setScopedModel("Fable", isShown: false)
-        XCTAssertFalse(settings.isScopedModelShown("Fable"))
-
         settings.setScopedModel("Fable", isShown: true)
         XCTAssertTrue(settings.isScopedModelShown("Fable"))
-        XCTAssertTrue(settings.hiddenScopedModels.isEmpty)
+
+        settings.setScopedModel("Fable", isShown: false)
+        XCTAssertFalse(settings.isScopedModelShown("Fable"))
+        XCTAssertTrue(settings.shownScopedModels.isEmpty)
     }
 
     // MARK: - Public JSON export

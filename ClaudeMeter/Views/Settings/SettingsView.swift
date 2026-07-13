@@ -212,10 +212,10 @@ struct SettingsView: View {
 
     // MARK: - Model Usage Section
 
-    /// Includes hidden names so a model that drops out of the response can still be switched back on.
+    /// Includes opted-in names so a model that drops out of the response can still be switched off.
     private var scopedModelNames: [String] {
         let reported = appModel.usageData?.scopedUsage.map(\.name) ?? []
-        return Array(Set(reported).union(appModel.settings.hiddenScopedModels)).sorted()
+        return Array(Set(reported).union(appModel.settings.shownScopedModels)).sorted()
     }
 
     private var modelUsageSection: some View {

@@ -7,7 +7,7 @@ Keep track of your Claude.ai plan usage at a glance.
 ## Features
 
 - **Real-time usage monitoring** - Track your 5-hour session, 7-day weekly, and model-specific usage limits
-- **Any model, automatically** - Model-specific limits (Fable, Opus, Sonnet, ...) are read from whatever the API reports, so a newly launched model appears without an app update; toggle each one in Settings
+- **Any model, no update needed** - Model-specific limits (Fable, Opus, Sonnet, ...) are read from whatever the API reports, so a newly launched model is listed in Settings without an app update; switch on the ones you want shown in the popover
 - **Menu bar integration** - Clean, colour-coded usage indicator that lives in your macOS menu bar
 - **Multiple icon styles** - Choose from 6 icon styles: Battery, Circular, Minimal, Segments, Dual Bar, or Gauge
 - **Pacing indicator** - Flame icon warns when you're using Claude faster than sustainable pace

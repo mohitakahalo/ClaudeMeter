@@ -57,7 +57,7 @@ enum DemoDataFactory {
                 errorMessage: nil,
                 isLoading: false
             )
-            appModel.settings.hiddenScopedModels = []
+            appModel.settings.shownScopedModels = ["Fable", "Opus"]
 
         case .loading:
             appModel.applyDemoState(
