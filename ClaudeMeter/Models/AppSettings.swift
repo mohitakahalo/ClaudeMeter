@@ -24,8 +24,9 @@ struct AppSettings: Codable, Equatable, Sendable {
     /// Last known organization ID (cached)
     var cachedOrganizationId: UUID?
 
-    /// Whether to show Sonnet usage in the popover
-    var isSonnetUsageShown: Bool
+    /// Opt-out rather than opt-in, so a model the API starts reporting after this
+    /// build shows up on its own instead of waiting behind a switch.
+    var hiddenScopedModels: Set<String>
 
     /// Menu bar icon display style
     var iconStyle: IconStyle
@@ -39,7 +40,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         notificationThresholds: .default,
         isFirstLaunch: true,
         cachedOrganizationId: nil,
-        isSonnetUsageShown: false,
+        hiddenScopedModels: [],
         iconStyle: .battery,
         isColoredIcon: true
     )
@@ -50,9 +51,15 @@ struct AppSettings: Codable, Equatable, Sendable {
         case notificationThresholds = "notification_thresholds"
         case isFirstLaunch = "is_first_launch"
         case cachedOrganizationId = "cached_organization_id"
-        case isSonnetUsageShown = "show_sonnet_usage"
+        case hiddenScopedModels = "hidden_scoped_models"
         case iconStyle = "icon_style"
         case isColoredIcon = "is_colored_icon"
+    }
+
+    /// Read-only: migrates settings saved before `hiddenScopedModels` existed.
+    /// Kept out of `CodingKeys` so `encode` stays synthesized.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case showSonnetUsage = "show_sonnet_usage"
     }
 }
 
@@ -66,9 +73,16 @@ extension AppSettings {
         notificationThresholds = try container.decodeIfPresent(NotificationThresholds.self, forKey: .notificationThresholds) ?? defaults.notificationThresholds
         isFirstLaunch = try container.decodeIfPresent(Bool.self, forKey: .isFirstLaunch) ?? defaults.isFirstLaunch
         cachedOrganizationId = try container.decodeIfPresent(UUID.self, forKey: .cachedOrganizationId)
-        isSonnetUsageShown = try container.decodeIfPresent(Bool.self, forKey: .isSonnetUsageShown) ?? defaults.isSonnetUsageShown
         iconStyle = try container.decodeIfPresent(IconStyle.self, forKey: .iconStyle) ?? defaults.iconStyle
         isColoredIcon = try container.decodeIfPresent(Bool.self, forKey: .isColoredIcon) ?? defaults.isColoredIcon
+
+        if let hidden = try container.decodeIfPresent(Set<String>.self, forKey: .hiddenScopedModels) {
+            hiddenScopedModels = hidden
+        } else {
+            let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+            let wasSonnetShown = try legacy.decodeIfPresent(Bool.self, forKey: .showSonnetUsage)
+            hiddenScopedModels = wasSonnetShown.map { $0 ? [] : ["Sonnet"] } ?? defaults.hiddenScopedModels
+        }
     }
 }
 
@@ -76,5 +90,18 @@ extension AppSettings {
     /// Validate refresh interval is within bounds
     mutating func setRefreshInterval(_ interval: TimeInterval) {
         refreshInterval = max(60, min(600, interval))
+    }
+
+    /// Whether a model-scoped limit should appear in the popover
+    func isScopedModelShown(_ name: String) -> Bool {
+        !hiddenScopedModels.contains(name)
+    }
+
+    mutating func setScopedModel(_ name: String, isShown: Bool) {
+        if isShown {
+            hiddenScopedModels.remove(name)
+        } else {
+            hiddenScopedModels.insert(name)
+        }
     }
 }
