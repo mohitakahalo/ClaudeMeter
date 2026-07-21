@@ -44,10 +44,18 @@ final class PaceSignalTests: XCTestCase {
         XCTAssertEqual(usageLimit.paceRatio(windowDuration: weeklyWindow) ?? 0, 0.4, accuracy: 0.01)
     }
 
-    func test_paceRatio_withinGracePeriod_isNil() {
-        // Only 2% of the window elapsed (< minimumElapsedFraction of 5%)
-        let usageLimit = limit(utilization: 10, elapsedFraction: 0.02, window: sessionWindow)
+    func test_paceRatio_withinGracePeriod_belowUsageFloor_isNil() {
+        // 1% used in the first 2% of the window: below both the elapsed grace and
+        // the usage floor, so the ratio stays suppressed as noise.
+        let usageLimit = limit(utilization: 1, elapsedFraction: 0.02, window: sessionWindow)
         XCTAssertNil(usageLimit.paceRatio(windowDuration: sessionWindow))
+    }
+
+    func test_paceRatio_withinGracePeriod_aboveUsageFloor_surfaces() {
+        // A front-loaded burst clears the usage floor, so the ratio surfaces before
+        // the elapsed grace ends: 10% used at 2% elapsed -> 5.0.
+        let usageLimit = limit(utilization: 10, elapsedFraction: 0.02, window: sessionWindow)
+        XCTAssertEqual(usageLimit.paceRatio(windowDuration: sessionWindow) ?? 0, 5.0, accuracy: 0.01)
     }
 
     func test_paceRatio_pastReset_isNil() {
@@ -158,6 +166,19 @@ final class PaceSignalTests: XCTestCase {
         )
     }
 
+    func test_projectedEndPercent_withinGracePeriod_aboveUsageFloor_surfaces() {
+        // 10% used at 2% elapsed extrapolates to 500% - surfaces once the usage
+        // floor is cleared, without waiting out the elapsed grace.
+        let usageLimit = limit(utilization: 10, elapsedFraction: 0.02, window: sessionWindow)
+        XCTAssertEqual(usageLimit.projectedEndPercent(windowDuration: sessionWindow) ?? 0, 500, accuracy: 1)
+    }
+
+    func test_projectedEndPercent_withinGracePeriod_belowUsageFloor_isNil() {
+        // Trivial early usage stays suppressed - below both grace and usage floor.
+        let usageLimit = limit(utilization: 1, elapsedFraction: 0.02, window: sessionWindow)
+        XCTAssertNil(usageLimit.projectedEndPercent(windowDuration: sessionWindow))
+    }
+
     func test_projectedLimitDate_whenBurningFast_isBeforeReset() {
         // 60% used at 50% elapsed -> hits 100% at ~83% of the window, before reset
         let usageLimit = limit(utilization: 60, elapsedFraction: 0.5, window: sessionWindow)
@@ -187,7 +208,9 @@ final class PaceSignalTests: XCTestCase {
         // 60% burned in the first ~2% of the window - below the pace grace period,
         // but a lockout is unambiguous, so the projection must still fire.
         let usageLimit = limit(utilization: 60, elapsedFraction: 0.02, window: sessionWindow)
-        XCTAssertNil(usageLimit.paceRatio(windowDuration: sessionWindow), "grace still suppresses the ratio")
+        // The migration surfaces the ratio too once usage clears the floor: 60% at 2% elapsed -> 30.0.
+        XCTAssertEqual(usageLimit.paceRatio(windowDuration: sessionWindow) ?? 0, 30.0, accuracy: 0.01,
+                       "usage floor surfaces the ratio inside the elapsed grace")
 
         guard let hitDate = usageLimit.projectedLimitDate(windowDuration: sessionWindow) else {
             return XCTFail("Expected an early limit projection for a heavy front-loaded burn")
@@ -196,8 +219,8 @@ final class PaceSignalTests: XCTestCase {
     }
 
     func test_projectedLimitDate_trivialEarlyUsage_isNil() {
-        // 2% used moments after reset is noise, not a lockout - below the usage floor.
-        let usageLimit = limit(utilization: 2, elapsedFraction: 0.01, window: sessionWindow)
+        // 1% used moments after reset is noise, not a lockout - below the usage floor.
+        let usageLimit = limit(utilization: 1, elapsedFraction: 0.01, window: sessionWindow)
         XCTAssertNil(usageLimit.projectedLimitDate(windowDuration: sessionWindow))
     }
 

@@ -100,8 +100,9 @@ extension UsageLimit {
 
     /// Ratio of usage fraction to elapsed-time fraction of the window.
     /// 1.0 = exactly sustainable pace, >1 = burning faster, <1 = underusing.
-    /// Returns nil when the window isn't active or too little of it has elapsed
-    /// for the ratio to be meaningful.
+    /// Returns nil when the window isn't active, or too little has elapsed and
+    /// usage is still below `minimumUsageForProjection` (a front-loaded burst
+    /// surfaces the ratio without waiting out the elapsed grace).
     /// - Parameters:
     ///   - windowDuration: Duration of the usage window (e.g., 5 hours for session)
     ///   - pacingDuration: Time span the quota is expected to be consumed over.
@@ -125,7 +126,13 @@ extension UsageLimit {
 
         let windowStart = resetAt.addingTimeInterval(-windowDuration)
         let timeElapsedPct = min(now.timeIntervalSince(windowStart) / pacing, 1.0)
-        guard timeElapsedPct >= Constants.Pacing.minimumElapsedFraction else { return nil }
+        // A front-loaded burst is meaningful before the elapsed grace: once usage
+        // clears `minimumUsageForProjection` the ratio surfaces immediately, matching
+        // `projectedLimitDate`. `timeElapsedPct > 0` keeps the ratio's divisor safe.
+        guard timeElapsedPct > 0,
+              timeElapsedPct >= Constants.Pacing.minimumElapsedFraction
+                  || utilization >= Constants.Pacing.minimumUsageForProjection
+        else { return nil }
 
         return timeElapsedPct * 100
     }
@@ -143,7 +150,8 @@ extension UsageLimit {
     /// average rate holds. Extrapolates to the pacing horizon (default: the full
     /// window) so it shares a time basis with `paceRatio` — a card can't then read
     /// "underusing" and "hits limit" at once. Returns nil when the window isn't
-    /// active or too little has elapsed.
+    /// active, or too little has elapsed and usage is below
+    /// `minimumUsageForProjection`.
     /// - Parameters:
     ///   - windowDuration: Duration of the usage window (e.g., 5 hours for session)
     ///   - pacingDuration: See `paceRatio(windowDuration:pacingDuration:)`
@@ -153,7 +161,12 @@ extension UsageLimit {
 
         let windowStart = resetAt.addingTimeInterval(-windowDuration)
         let elapsed = now.timeIntervalSince(windowStart)
-        guard elapsed >= windowDuration * Constants.Pacing.minimumElapsedFraction else { return nil }
+        guard elapsed > 0 else { return nil }
+        // As with `projectedLimitDate`, a burst clearing `minimumUsageForProjection`
+        // projects immediately instead of waiting out the elapsed grace window.
+        guard elapsed >= windowDuration * Constants.Pacing.minimumElapsedFraction
+                  || utilization >= Constants.Pacing.minimumUsageForProjection
+        else { return nil }
 
         // Never project a horizon shorter than what's already elapsed.
         let horizon = max(pacingDuration ?? windowDuration, elapsed)

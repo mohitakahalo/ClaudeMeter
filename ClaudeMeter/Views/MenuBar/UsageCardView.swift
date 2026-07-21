@@ -192,7 +192,7 @@ struct UsageCardView: View {
             if let hitDate = usageLimit.projectedLimitDate(windowDuration: windowDuration, pacingDuration: pacingDuration) {
                 Text("Hits limit ~\(Self.hitDateDescription(hitDate)), \(Self.remainingDescription(usageLimit.resetAt.timeIntervalSince(hitDate))) before reset")
                     .font(.caption)
-                    .foregroundColor(.orange)
+                    .foregroundColor(paceRatio.map(PacePalette.color(for:)) ?? .orange)
             } else if let endPercent = usageLimit.projectedEndPercent(windowDuration: windowDuration, pacingDuration: pacingDuration) {
                 let end = Int(min(endPercent, 100).rounded())
                 if showsUnderuse, let paceRatio, paceRatio < Constants.Pacing.underuseThreshold {

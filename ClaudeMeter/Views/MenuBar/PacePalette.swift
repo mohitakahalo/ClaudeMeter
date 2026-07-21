@@ -15,8 +15,8 @@ enum PacePalette {
         case underuse, sustainable, overuse, heavyOveruse
     }
 
-    /// Blue underuse (<0.8x), green sustainable (0.8-1.2x),
-    /// orange overuse (1.2-2.5x), red heavy overuse (>2.5x)
+    /// Blue underuse (<0.8x), green sustainable (0.8-1.0x),
+    /// orange overuse (1.0-1.2x), red heavy overuse (>1.2x)
     static func band(for ratio: Double) -> Band {
         if ratio < Constants.Pacing.underuseThreshold { return .underuse }
         if ratio <= Constants.Pacing.riskThreshold { return .sustainable }
