@@ -93,6 +93,20 @@ extension UsageData {
         return nil
     }
 
+    /// Ratio to lead the menu bar with in pace-first mode when no off-pace
+    /// signal fires: the higher — "worst", i.e. closest to or furthest past a
+    /// sustainable pace — of the session and weekly ratios, so an on-pace weekly
+    /// isn't hidden behind an idle session. `nil` when neither window has a
+    /// ratio yet (both inside the grace period / post-reset).
+    func fallbackPaceRatio(weeklyPaceDays: Int) -> Double? {
+        let sessionRatio = sessionUsage.paceRatio(windowDuration: Constants.Pacing.sessionWindow)
+        let weeklyRatio = weeklyUsage.paceRatio(
+            windowDuration: Constants.Pacing.weeklyWindow,
+            pacingDuration: Constants.Pacing.weeklyPacingDuration(days: weeklyPaceDays)
+        )
+        return [sessionRatio, weeklyRatio].compactMap { $0 }.max()
+    }
+
     private func makeSignal(
         _ kind: PaceKind,
         limit: UsageLimit,

@@ -127,18 +127,15 @@ final class MenuBarManager {
         let settings = appModel.settings
 
         // Pace-first display: replace the quota text with the most relevant ratio -
-        // the off-pace signal's if there is one, else session, else weekly. Skip the
-        // pace computation entirely when the feature is off.
+        // the off-pace signal's if there is one, else the worst (highest) of the
+        // window ratios, so an on-pace weekly isn't hidden behind an idle session.
+        // Skip the pace computation entirely when the feature is off.
         var paceSignal: PaceSignal?
         var paceRatio: Double?
         if settings.isPaceFirstDisplay, let data = appModel.usageData {
             paceSignal = data.paceSignal(weeklyPaceDays: settings.weeklyPaceDays)
             paceRatio = paceSignal?.ratio
-                ?? data.sessionUsage.paceRatio(windowDuration: Constants.Pacing.sessionWindow)
-                ?? data.weeklyUsage.paceRatio(
-                    windowDuration: Constants.Pacing.weeklyWindow,
-                    pacingDuration: settings.weeklyPacingDuration
-                )
+                ?? data.fallbackPaceRatio(weeklyPaceDays: settings.weeklyPaceDays)
         }
 
         button.toolTip = paceSignal?.tooltip

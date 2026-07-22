@@ -286,4 +286,29 @@ final class PaceSignalTests: XCTestCase {
         XCTAssertEqual(data.paceSignal(weeklyPaceDays: 7)?.kind, .hot)
         XCTAssertNil(data.paceSignal(weeklyPaceDays: 5))
     }
+
+    // MARK: - fallbackPaceRatio (menu bar, no off-pace signal)
+
+    func test_fallbackPaceRatio_leadsWithWorstWindowNotSession() {
+        // No off-pace signal: the session idles at ~0.1x while the weekly window
+        // is on pace at 1.0x. The menu bar must lead with the worst (highest)
+        // ratio, not default to the idle session.
+        let data = usageData(
+            session: limit(utilization: 7, elapsedFraction: 0.64, window: sessionWindow),   // ~0.11
+            weekly: limit(utilization: 13, elapsedFraction: 0.13, window: weeklyWindow)      // 1.0
+        )
+
+        XCTAssertNil(data.paceSignal(weeklyPaceDays: 7), "neither window is off pace")
+        XCTAssertEqual(data.fallbackPaceRatio(weeklyPaceDays: 7) ?? 0, 1.0, accuracy: 0.02)
+    }
+
+    func test_fallbackPaceRatio_isNilWhenBothWindowsSuppressed() {
+        // Both barely started and below the usage floor: no ratio to lead with.
+        let data = usageData(
+            session: limit(utilization: 1, elapsedFraction: 0.02, window: sessionWindow),
+            weekly: limit(utilization: 1, elapsedFraction: 0.02, window: weeklyWindow)
+        )
+
+        XCTAssertNil(data.fallbackPaceRatio(weeklyPaceDays: 7))
+    }
 }
