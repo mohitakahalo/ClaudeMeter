@@ -41,7 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBarManager = manager
 
         #if DEBUG
-        if isDemoMode {
+        // Skip bootstrap when the app is launched as a test host, so test runs
+        // never touch the real keychain (which triggers password prompts when
+        // the build is unsigned)
+        if isDemoMode || Self.isRunningTests {
             manager.startWithoutBootstrap()
         } else {
             manager.start()
@@ -50,4 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         manager.start()
         #endif
     }
+
+    #if DEBUG
+    private static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+    #endif
 }
