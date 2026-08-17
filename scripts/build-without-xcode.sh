@@ -2,9 +2,9 @@
 # Build ClaudeMeter.app + ClaudeMeter.dmg with Command Line Tools ONLY (no Xcode).
 set -euo pipefail
 
-SCRATCH="/private/tmp/claude-501/-Users-mohitsrivastava-Workspace/bf7a3614-1f52-4871-8441-2df7c527b5d0/scratchpad"
-SRCROOT="$SCRATCH/cm"                 # upstream clone (read-only)
-WORK="$SCRATCH/pacebuild"            # build workspace
+SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRCROOT="$(dirname "$SCRIPTS")"       # repository root (read-only)
+WORK="${WORK:-$SRCROOT/build}"        # build workspace (gitignored)
 STAGE="$WORK/stage"                   # SwiftPM package staging
 APPVER="${APPVER:-1.4.2}"
 BUILDVER="${BUILDVER:-1}"
@@ -21,7 +21,7 @@ rm -rf "$STAGE/Sources/ClaudeMeter/Assets.xcassets" \
        "$STAGE/Sources/ClaudeMeter/Resources"
 
 # Strip #Preview macros (PreviewsMacros plugin ships only inside Xcode.app).
-python3 "$SCRATCH/buildprobe/strip_previews.py" "$STAGE/Sources/ClaudeMeter"
+python3 "$SCRIPTS/strip_previews.py" "$STAGE/Sources/ClaudeMeter"
 
 cat > "$STAGE/Package.swift" <<'EOF'
 // swift-tools-version: 6.0
