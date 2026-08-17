@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Distinguish Cloudflare's HTML challenge from an invalid session, so a
   transient block no longer prompts for a new session key
 - Send a valid `Origin` header (it was missing its scheme)
+- Make the settings tabs scrollable and bound the window height; the General
+  tab had grown taller than the screen and was simply clipped
 
 ### Added
 

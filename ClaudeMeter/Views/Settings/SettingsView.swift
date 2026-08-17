@@ -29,7 +29,13 @@ struct SettingsView: View {
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 500)
+        // Capped rather than unbounded: the window restores its saved frame, and
+        // a tab that grows taller than the screen otherwise reopens with its
+        // lower half below the desktop, out of reach even with a scroll view.
+        .frame(
+            minWidth: 500, idealWidth: 500, maxWidth: 500,
+            minHeight: 380, idealHeight: 600, maxHeight: 760
+        )
         .onAppear {
             loadSettings()
         }
@@ -49,7 +55,7 @@ struct SettingsView: View {
     // MARK: - General Tab
 
     private var generalTab: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        Group {
             if !appModel.isReady {
                 VStack {
                     Spacer()
@@ -59,16 +65,31 @@ struct SettingsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                sessionKeySection
-                refreshIntervalSection
-                modelUsageSection
-                displayModeSection
-                iconStyleSection
-                paceIndicatorSection
-                launchAtLoginSection
+                scrollingTab {
+                    sessionKeySection
+                    refreshIntervalSection
+                    modelUsageSection
+                    displayModeSection
+                    iconStyleSection
+                    paceIndicatorSection
+                    launchAtLoginSection
+                }
             }
         }
-        .padding(24)
+    }
+
+    /// Tab content taller than the window must scroll. The General tab in
+    /// particular outgrew a laptop screen once model-scoped limits and the
+    /// pace controls were added, and a fixed-size window simply clipped it.
+    private func scrollingTab<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 16) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(24)
+        }
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     // MARK: - Claude Session Section
@@ -387,7 +408,7 @@ struct SettingsView: View {
     // MARK: - Notifications Tab
 
     private var notificationsTab: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        scrollingTab {
             enableNotificationsSection
             thresholdsSection
                 .opacity(appModel.settings.hasNotificationsEnabled ? 1 : 0.5)
@@ -399,7 +420,6 @@ struct SettingsView: View {
                 .opacity(appModel.settings.hasNotificationsEnabled ? 1 : 0.5)
                 .allowsHitTesting(appModel.settings.hasNotificationsEnabled)
         }
-        .padding(24)
     }
 
     private var enableNotificationsSection: some View {
@@ -582,6 +602,13 @@ struct SettingsView: View {
     // MARK: - About Tab
 
     private var aboutTab: some View {
+        ScrollView(.vertical) {
+            aboutContent
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+
+    private var aboutContent: some View {
         VStack(spacing: 24) {
             // App Icon
             if let appIconImage = NSImage(named: "AppIcon") {

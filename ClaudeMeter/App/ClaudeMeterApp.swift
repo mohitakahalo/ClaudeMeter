@@ -30,6 +30,8 @@ struct ClaudeMeterApp: App {
         Settings {
             SettingsView(appModel: appModel)
         }
-        .windowResizability(.contentSize)
+        // .contentSize would pin the window to its content, which is what made
+        // a tall General tab overflow the screen with no way to scroll or resize.
+        .windowResizability(.contentMinSize)
     }
 }
