@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-08-17
+
+### Fixed
+
+- Read usage from Claude Code's OAuth token when it is available, so the meter
+  keeps working after the claude.ai browser session cookie expires
+- Parse reset timestamps at any ISO8601 precision; timestamps without
+  fractional seconds previously failed the entire usage fetch
+- Report an expired session as such: claude.ai answers `403 permission_error`
+  (`account_session_invalid`), which was being shown as a generic server error
+- Distinguish Cloudflare's HTML challenge from an invalid session, so a
+  transient block no longer prompts for a new session key
+- Send a valid `Origin` header (it was missing its scheme)
+
+### Added
+
+- Model-scoped weekly limits from the API's `limits` array, replacing the
+  Sonnet-only field the API now returns as null (#32)
+- Pace-based utilization tracking in the menu bar and popover (#33)
+
 ## [1.4.0] - 2026-05-19
 
 ### Added
