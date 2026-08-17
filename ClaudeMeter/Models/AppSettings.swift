@@ -24,8 +24,9 @@ struct AppSettings: Codable, Equatable, Sendable {
     /// Last known organization ID (cached)
     var cachedOrganizationId: UUID?
 
-    /// Whether to show Sonnet usage in the popover
-    var isSonnetUsageShown: Bool
+    /// Model-scoped limits the user has opted into showing, by API display name.
+    /// Empty by default: nothing appears in the popover until the user asks for it.
+    var shownScopedModels: Set<String>
 
     /// Menu bar icon display style
     var iconStyle: IconStyle
@@ -47,7 +48,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         notificationThresholds: .default,
         isFirstLaunch: true,
         cachedOrganizationId: nil,
-        isSonnetUsageShown: false,
+        shownScopedModels: [],
         iconStyle: .battery,
         isColoredIcon: true,
         weeklyPaceDays: 7,
@@ -60,11 +61,17 @@ struct AppSettings: Codable, Equatable, Sendable {
         case notificationThresholds = "notification_thresholds"
         case isFirstLaunch = "is_first_launch"
         case cachedOrganizationId = "cached_organization_id"
-        case isSonnetUsageShown = "show_sonnet_usage"
+        case shownScopedModels = "shown_scoped_models"
         case iconStyle = "icon_style"
         case isColoredIcon = "is_colored_icon"
         case weeklyPaceDays = "weekly_pace_days"
         case isPaceFirstDisplay = "pace_first_display"
+    }
+
+    /// Read-only: migrates settings saved before `shownScopedModels` existed.
+    /// Kept out of `CodingKeys` so `encode` stays synthesized.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case showSonnetUsage = "show_sonnet_usage"
     }
 }
 
@@ -78,12 +85,19 @@ extension AppSettings {
         notificationThresholds = try container.decodeIfPresent(NotificationThresholds.self, forKey: .notificationThresholds) ?? defaults.notificationThresholds
         isFirstLaunch = try container.decodeIfPresent(Bool.self, forKey: .isFirstLaunch) ?? defaults.isFirstLaunch
         cachedOrganizationId = try container.decodeIfPresent(UUID.self, forKey: .cachedOrganizationId)
-        isSonnetUsageShown = try container.decodeIfPresent(Bool.self, forKey: .isSonnetUsageShown) ?? defaults.isSonnetUsageShown
         iconStyle = try container.decodeIfPresent(IconStyle.self, forKey: .iconStyle) ?? defaults.iconStyle
         isColoredIcon = try container.decodeIfPresent(Bool.self, forKey: .isColoredIcon) ?? defaults.isColoredIcon
         let decodedPaceDays = try container.decodeIfPresent(Int.self, forKey: .weeklyPaceDays) ?? defaults.weeklyPaceDays
         weeklyPaceDays = max(5, min(7, decodedPaceDays))
         isPaceFirstDisplay = try container.decodeIfPresent(Bool.self, forKey: .isPaceFirstDisplay) ?? defaults.isPaceFirstDisplay
+
+        if let shown = try container.decodeIfPresent(Set<String>.self, forKey: .shownScopedModels) {
+            shownScopedModels = shown
+        } else {
+            let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+            let wasSonnetShown = try legacy.decodeIfPresent(Bool.self, forKey: .showSonnetUsage) ?? false
+            shownScopedModels = wasSonnetShown ? ["Sonnet"] : defaults.shownScopedModels
+        }
     }
 }
 
@@ -96,5 +110,18 @@ extension AppSettings {
     /// Span the weekly quota is expected to be consumed over, per `weeklyPaceDays`.
     var weeklyPacingDuration: TimeInterval {
         Constants.Pacing.weeklyPacingDuration(days: weeklyPaceDays)
+    }
+
+    /// Whether a model-scoped limit should appear in the popover
+    func isScopedModelShown(_ name: String) -> Bool {
+        shownScopedModels.contains(name)
+    }
+
+    mutating func setScopedModel(_ name: String, isShown: Bool) {
+        if isShown {
+            shownScopedModels.insert(name)
+        } else {
+            shownScopedModels.remove(name)
+        }
     }
 }

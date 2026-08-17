@@ -118,11 +118,10 @@ struct UsagePopoverView: View {
                             isPaceFirst: appModel.settings.isPaceFirstDisplay
                         )
 
-                        // Sonnet usage card (conditional rendering)
-                        if appModel.settings.isSonnetUsageShown, let sonnetUsage = usageData.sonnetUsage {
+                        ForEach(usageData.scopedUsage.filter { appModel.settings.isScopedModelShown($0.name) }) { scoped in
                             UsageCardView(
-                                title: weeklyCardTitle("Weekly Sonnet"),
-                                usageLimit: sonnetUsage,
+                                title: weeklyCardTitle(scoped.title),
+                                usageLimit: scoped.limit,
                                 icon: "sparkles",
                                 windowDuration: Constants.Pacing.weeklyWindow,
                                 pacingDuration: weeklyPacingDuration,
