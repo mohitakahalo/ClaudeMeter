@@ -118,7 +118,23 @@ cat > "$WORK/ClaudeMeter.entitlements" <<'EOF'
 </dict>
 </plist>
 EOF
-codesign --force --sign - --options runtime --timestamp=none \
+# Sign with a stable identity when one is available.
+#
+# An ad-hoc signature (-) takes its identity from the binary's own hash, so every
+# rebuild looks like a different application to the keychain and re-triggers the
+# approval dialog for Claude Code's credentials. A certificate-backed signature
+# keeps the same designated requirement across rebuilds, so "Always Allow" is
+# answered once and stays answered.
+SIGN_IDENTITY="${SIGN_IDENTITY:-ClaudeMeter Local Signing}"
+if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_IDENTITY"; then
+    echo "signing as: $SIGN_IDENTITY"
+else
+    echo "WARNING: no '$SIGN_IDENTITY' identity found - falling back to ad-hoc."
+    echo "         Expect a keychain prompt after every rebuild. See docs/signing.md."
+    SIGN_IDENTITY="-"
+fi
+
+codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp=none \
          --entitlements "$WORK/ClaudeMeter.entitlements" "$APP"
 codesign --verify --strict --verbose=2 "$APP"
 
