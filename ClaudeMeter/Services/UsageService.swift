@@ -8,31 +8,109 @@
 import Foundation
 import os
 
-/// Actor-isolated usage service with retry logic
+/// Actor-isolated usage service with retry logic.
+///
+/// Usage can be read two ways. Claude Code's OAuth token is preferred: it is
+/// already on the machine, it is refreshed by Claude Code itself, and
+/// `api.anthropic.com` is not behind the bot protection that fronts the web
+/// app. An imported claude.ai browser cookie is the fallback, for people who
+/// do not use Claude Code — those cookies expire every few days, which is what
+/// leaves the meter frozen on stale numbers.
 actor UsageService: UsageServiceProtocol {
     private static let logger = Logger(subsystem: "com.claudemeter", category: "UsageService")
     private let networkService: NetworkServiceProtocol
     private let cacheRepository: CacheRepositoryProtocol
     private let keychainRepository: KeychainRepositoryProtocol
     private let settingsRepository: SettingsRepositoryProtocol
+    private let credentialsRepository: ClaudeCodeCredentialsRepositoryProtocol
 
     private let maxRetries = Constants.Network.maxRetries
-    private let baseURL = "https://claude.ai/api"
+    private let baseURL = Constants.API.claudeWebBase
+
+    /// Source that last returned data, for display in settings.
+    private var lastSuccessfulSource: UsageDataSource?
 
     init(
         networkService: NetworkServiceProtocol,
         cacheRepository: CacheRepositoryProtocol,
         keychainRepository: KeychainRepositoryProtocol,
-        settingsRepository: SettingsRepositoryProtocol
+        settingsRepository: SettingsRepositoryProtocol,
+        credentialsRepository: ClaudeCodeCredentialsRepositoryProtocol = ClaudeCodeCredentialsRepository()
     ) {
         self.networkService = networkService
         self.cacheRepository = cacheRepository
         self.keychainRepository = keychainRepository
         self.settingsRepository = settingsRepository
+        self.credentialsRepository = credentialsRepository
     }
 
     /// Fetch usage data with cache integration and exponential backoff retry
     func fetchUsage(forceRefresh: Bool = false) async throws -> UsageData {
+        // Clear cache if force refresh is requested
+        if forceRefresh {
+            await cacheRepository.invalidate()
+        }
+
+        // Check cache first (will be empty if force refresh)
+        if let cachedData = await cacheRepository.get() {
+            return cachedData
+        }
+
+        var oauthError: Error?
+
+        if let credentials = await credentialsRepository.load() {
+            if credentials.isExpired {
+                Self.logger.warning("Claude Code token expired; falling back to browser session")
+                oauthError = AppError.claudeCodeTokenExpired
+            } else {
+                do {
+                    let usageData = try await fetchUsageWithOAuth(credentials)
+                    lastSuccessfulSource = .claudeCode
+                    await cacheRepository.set(usageData)
+                    return usageData
+                } catch {
+                    Self.logger.error("OAuth usage fetch failed: \(error.localizedDescription)")
+                    oauthError = error
+                }
+            }
+        }
+
+        do {
+            let usageData = try await fetchUsageWithBrowserSession()
+            lastSuccessfulSource = .browserSession
+            return usageData
+        } catch AppError.noSessionKey {
+            // No browser cookie configured: the OAuth failure is the real story.
+            throw oauthError ?? AppError.noSessionKey
+        }
+    }
+
+    /// Whether usage can be read without the user importing a browser session.
+    func isAutomaticAuthAvailable() async -> Bool {
+        guard let credentials = await credentialsRepository.load() else { return false }
+        return !credentials.isExpired
+    }
+
+    /// Source that last returned data successfully.
+    func activeSource() async -> UsageDataSource? {
+        lastSuccessfulSource
+    }
+
+    // MARK: - Claude Code (OAuth)
+
+    private func fetchUsageWithOAuth(_ credentials: ClaudeCodeCredentials) async throws -> UsageData {
+        let response: UsageAPIResponse = try await networkService.request(
+            Constants.API.oauthUsage,
+            method: .get,
+            authorization: .bearer(credentials.accessToken)
+        )
+
+        return try response.toDomain()
+    }
+
+    // MARK: - Browser session (claude.ai)
+
+    private func fetchUsageWithBrowserSession() async throws -> UsageData {
         let sessionKeyString: String
         do {
             sessionKeyString = try await keychainRepository.retrieve(account: "default")
@@ -43,16 +121,6 @@ actor UsageService: UsageServiceProtocol {
         }
 
         let sessionKey = try SessionKey(sessionKeyString)
-
-        // Clear cache if force refresh is requested
-        if forceRefresh {
-            await cacheRepository.invalidate()
-        }
-
-        // Check cache first (will be empty if force refresh)
-        if let cachedData = await cacheRepository.get() {
-            return cachedData
-        }
 
         // Get organization ID
         let settings = await settingsRepository.load()
@@ -99,6 +167,13 @@ actor UsageService: UsageServiceProtocol {
                 // Rate limit hit - use longer exponential backoff
                 Self.logger.warning("Rate limit exceeded (attempt \(attempt + 1)/\(self.maxRetries))")
                 lastError = NetworkError.rateLimitExceeded
+                let delay = pow(Constants.Network.rateLimitBackoffBase, Double(attempt))
+                try await Task.sleep(for: .seconds(delay))
+            } catch NetworkError.blockedByBotProtection {
+                // Cloudflare interstitial - transient, and never a reason to
+                // tell the user their session expired.
+                Self.logger.warning("Blocked by bot protection (attempt \(attempt + 1)/\(self.maxRetries))")
+                lastError = NetworkError.blockedByBotProtection
                 let delay = pow(Constants.Network.rateLimitBackoffBase, Double(attempt))
                 try await Task.sleep(for: .seconds(delay))
             } catch NetworkError.authenticationFailed {

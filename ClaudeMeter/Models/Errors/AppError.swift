@@ -16,6 +16,7 @@ enum AppError: LocalizedError {
     case apiResponseInvalid
     case organizationNotFound
     case cacheCorrupted
+    case claudeCodeTokenExpired
 
     var errorDescription: String? {
         switch self {
@@ -33,13 +34,15 @@ enum AppError: LocalizedError {
             return "No organizations found for this account."
         case .cacheCorrupted:
             return "Cached data is corrupted. Fetching fresh data..."
+        case .claudeCodeTokenExpired:
+            return "Claude Code's session has expired. Run Claude Code to refresh it, or import a browser session."
         }
     }
 
     /// Whether error is recoverable without user action
     var isRecoverable: Bool {
         switch self {
-        case .networkError, .cacheCorrupted, .apiResponseInvalid:
+        case .networkError, .cacheCorrupted, .apiResponseInvalid, .claudeCodeTokenExpired:
             return true
         case .noSessionKey, .sessionKeyInvalid, .organizationNotFound, .keychainError:
             return false
@@ -57,6 +60,8 @@ enum AppError: LocalizedError {
             return "Retry"
         case .organizationNotFound:
             return "Check Account"
+        case .claudeCodeTokenExpired:
+            return "Import Browser Session"
         default:
             return nil
         }

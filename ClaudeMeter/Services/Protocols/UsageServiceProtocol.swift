@@ -21,4 +21,16 @@ protocol UsageServiceProtocol: Actor {
 
     /// Validate session key with Claude API
     func validateSessionKey(_ sessionKey: SessionKey) async throws -> Bool
+
+    /// Whether usage can be read without importing a browser session
+    /// (i.e. Claude Code is signed in on this machine)
+    func isAutomaticAuthAvailable() async -> Bool
+
+    /// Source that last returned data successfully
+    func activeSource() async -> UsageDataSource?
+}
+
+extension UsageServiceProtocol {
+    func isAutomaticAuthAvailable() async -> Bool { false }
+    func activeSource() async -> UsageDataSource? { nil }
 }

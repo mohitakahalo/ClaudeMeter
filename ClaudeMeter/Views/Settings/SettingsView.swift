@@ -94,6 +94,15 @@ struct SettingsView: View {
                     .foregroundStyle(sessionKey.isEmpty ? Color.secondary : Color.green)
             }
 
+            if let activeSource = appModel.activeSource {
+                Label("Reading usage from your \(activeSource.displayName)", systemImage: activeSource == .claudeCode ? "terminal" : "safari")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help(activeSource == .claudeCode
+                          ? "Claude Code's own token is used, so no browser session is needed."
+                          : "No Claude Code session was available, so the imported browser session is used.")
+            }
+
             HStack {
                 if isSessionKeyShown {
                     TextField("sk-ant-...", text: $sessionKey)

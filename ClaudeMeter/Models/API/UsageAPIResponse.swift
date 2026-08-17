@@ -124,18 +124,6 @@ enum MappingError: LocalizedError {
 }
 
 extension UsageAPIResponse {
-    private static let fractionalSecondsFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    private static let plainFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
     func toDomain() throws -> UsageData {
         guard let sessionEntry = entry(ofKind: LimitEntryResponse.Kind.session, legacy: fiveHour) else {
             throw MappingError.missingCriticalField(field: "five_hour")
@@ -214,8 +202,7 @@ extension UsageAPIResponse {
         guard let rawValue else {
             return Date().addingTimeInterval(fallback)
         }
-        guard let date = Self.fractionalSecondsFormatter.date(from: rawValue)
-            ?? Self.plainFormatter.date(from: rawValue) else {
+        guard let date = ISO8601Parsing.date(from: rawValue) else {
             throw MappingError.missingCriticalField(field: field)
         }
         return date

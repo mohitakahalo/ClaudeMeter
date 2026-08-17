@@ -22,6 +22,9 @@ final class AppModel {
     var isSetupComplete: Bool = false
     var isReady: Bool = false
 
+    /// Credential source the last successful fetch used
+    var activeSource: UsageDataSource?
+
     // MARK: - Dependencies
 
     @ObservationIgnored private let settingsRepository: SettingsRepositoryProtocol
@@ -74,7 +77,11 @@ final class AppModel {
         settings = await settingsRepository.load()
         hasLoadedSettings = true
 
-        isSetupComplete = await keychainRepository.exists(account: "default")
+        // Setup is complete when either credential source is usable: an
+        // imported browser session, or Claude Code's own signed-in token.
+        let hasSessionKey = await keychainRepository.exists(account: "default")
+        let hasClaudeCodeToken = await usageService.isAutomaticAuthAvailable()
+        isSetupComplete = hasSessionKey || hasClaudeCodeToken
         isReady = true
 
         if isSetupComplete {
@@ -108,6 +115,7 @@ final class AppModel {
         do {
             let data = try await usageService.fetchUsage(forceRefresh: forceRefresh)
             usageData = data
+            activeSource = await usageService.activeSource()
             await notificationService.evaluateThresholds(
                 usageData: data,
                 settings: settings
@@ -169,11 +177,21 @@ final class AppModel {
     func clearSessionKey() async throws {
         try await keychainRepository.delete(account: "default")
         settings.cachedOrganizationId = nil
-        settings.isFirstLaunch = true
-        isSetupComplete = false
-        usageData = nil
+
+        // Clearing the browser session only ends setup when Claude Code's
+        // token cannot keep the meter running on its own.
+        let hasClaudeCodeToken = await usageService.isAutomaticAuthAvailable()
+        settings.isFirstLaunch = !hasClaudeCodeToken
+        isSetupComplete = hasClaudeCodeToken
         errorMessage = nil
-        refreshTask?.cancel()
+
+        if hasClaudeCodeToken {
+            await refreshUsage(forceRefresh: true)
+        } else {
+            usageData = nil
+            activeSource = nil
+            refreshTask?.cancel()
+        }
     }
 
     // MARK: - Notifications

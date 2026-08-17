@@ -18,6 +18,19 @@ enum Constants {
         static let maxIconCacheSize = 100
     }
 
+    /// API endpoints
+    enum API {
+        /// claude.ai web API, authenticated with a browser session cookie
+        static let claudeWebBase = "https://claude.ai/api"
+
+        /// Anthropic's OAuth usage endpoint, authenticated with the bearer
+        /// token Claude Code stores in the keychain
+        static let oauthUsage = "https://api.anthropic.com/api/oauth/usage"
+
+        /// Beta header required by the OAuth endpoints
+        static let oauthBeta = "oauth-2025-04-20"
+    }
+
     /// Network configuration
     enum Network {
         /// Maximum number of retry attempts for failed requests
