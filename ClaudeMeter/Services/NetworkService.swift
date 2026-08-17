@@ -165,17 +165,10 @@ actor NetworkService: NetworkServiceProtocol {
             return true
         }
 
-        if error.type == "authentication_error" {
-            return true
-        }
-
-        if error.type == "permission_error",
-           let message = error.message?.lowercased(),
-           message.contains("authorization") || message.contains("authenticat") {
-            return true
-        }
-
-        return false
+        // Deliberately narrow: claude.ai also answers 403 permission_error for
+        // org-level restrictions, and telling those users their session expired
+        // sends them to re-import a credential that was never the problem.
+        return error.type == "authentication_error"
     }
 }
 

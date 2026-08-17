@@ -69,11 +69,6 @@ struct AppSettings: Codable, Equatable, Sendable {
         case isPaceFirstDisplay = "pace_first_display"
     }
 
-    /// Read-only: migrates settings saved before `shownScopedModels` existed.
-    /// Kept out of `CodingKeys` so `encode` stays synthesized.
-    private enum LegacyCodingKeys: String, CodingKey {
-        case showSonnetUsage = "show_sonnet_usage"
-    }
 }
 
 extension AppSettings {
@@ -92,13 +87,11 @@ extension AppSettings {
         weeklyPaceDays = max(5, min(7, decodedPaceDays))
         isPaceFirstDisplay = try container.decodeIfPresent(Bool.self, forKey: .isPaceFirstDisplay) ?? defaults.isPaceFirstDisplay
 
-        if let shown = try container.decodeIfPresent(Set<String>.self, forKey: .shownScopedModels) {
-            shownScopedModels = shown
-        } else {
-            let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
-            let wasSonnetShown = try legacy.decodeIfPresent(Bool.self, forKey: .showSonnetUsage) ?? false
-            shownScopedModels = wasSonnetShown ? ["Sonnet"] : defaults.shownScopedModels
-        }
+        // The pre-1.4.2 flag governed a single Sonnet field the API now returns
+        // as null, so it cannot express a choice about today's scoped limits.
+        // Settings written before this key existed therefore take the defaults.
+        shownScopedModels = try container.decodeIfPresent(Set<String>.self, forKey: .shownScopedModels)
+            ?? defaults.shownScopedModels
     }
 }
 

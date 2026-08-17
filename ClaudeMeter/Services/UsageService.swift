@@ -76,13 +76,45 @@ actor UsageService: UsageServiceProtocol {
         }
 
         do {
-            let usageData = try await fetchUsageWithBrowserSession()
-            lastSuccessfulSource = .browserSession
-            return usageData
-        } catch AppError.noSessionKey {
-            // No browser cookie configured: the OAuth failure is the real story.
-            throw oauthError ?? AppError.noSessionKey
+            return try await fetchUsageWithBrowserSession()
+        } catch {
+            // Both sources are down. Serve the last reading if it is recent
+            // enough to mean anything, but stop claiming a live source for it.
+            if let lastKnown = await recentLastKnown() {
+                Self.logger.warning("Both sources failed, using cached data")
+                lastSuccessfulSource = nil
+                return lastKnown
+            }
+            throw Self.combine(oauthError: oauthError, browserError: error)
         }
+    }
+
+    /// Picks the error that actually tells the user what to do.
+    ///
+    /// The browser path reports "session key invalid" for a cookie that may not
+    /// even be the source in use, so an OAuth diagnosis is never dropped: with
+    /// no cookie configured it is the whole story, and with a broken cookie both
+    /// are reported.
+    private static func combine(oauthError: Error?, browserError: Error) -> Error {
+        guard let oauthError else { return browserError }
+
+        if case AppError.noSessionKey = browserError {
+            return oauthError
+        }
+
+        return AppError.allSourcesUnavailable(
+            claudeCode: oauthError.localizedDescription,
+            browserSession: browserError.localizedDescription
+        )
+    }
+
+    /// Last known reading, if recent enough to still describe the current window.
+    private func recentLastKnown() async -> UsageData? {
+        guard let lastKnown = await cacheRepository.getLastKnown(),
+              Date().timeIntervalSince(lastKnown.lastUpdated) <= Constants.Cache.lastKnownMaxAge else {
+            return nil
+        }
+        return lastKnown
     }
 
     /// Whether usage can be read without the user importing a browser session.
@@ -98,14 +130,56 @@ actor UsageService: UsageServiceProtocol {
 
     // MARK: - Claude Code (OAuth)
 
+    /// A single blip must not demote the preferred source, so transient failures
+    /// are retried here rather than falling straight through to the cookie path
+    /// — waking from sleep reliably produces one failed request.
     private func fetchUsageWithOAuth(_ credentials: ClaudeCodeCredentials) async throws -> UsageData {
-        let response: UsageAPIResponse = try await networkService.request(
-            Constants.API.oauthUsage,
-            method: .get,
-            authorization: .bearer(credentials.accessToken)
-        )
+        var lastError: Error?
 
-        return try response.toDomain()
+        for attempt in 0..<maxRetries {
+            do {
+                let response: UsageAPIResponse = try await networkService.request(
+                    Constants.API.oauthUsage,
+                    method: .get,
+                    authorization: .bearer(credentials.accessToken)
+                )
+                return try response.toDomain()
+            } catch NetworkError.authenticationFailed {
+                throw AppError.claudeCodeTokenExpired
+            } catch NetworkError.rateLimitExceeded {
+                lastError = NetworkError.rateLimitExceeded
+                try await backOff(base: Constants.Network.rateLimitBackoffBase, attempt: attempt)
+            } catch let error as NetworkError where Self.isTransient(error) {
+                lastError = error
+                try await backOff(base: Constants.Network.backoffBase, attempt: attempt)
+            } catch let error as URLError where Self.isTransient(error) {
+                lastError = error
+                try await backOff(base: Constants.Network.backoffBase, attempt: attempt)
+            }
+        }
+
+        throw lastError ?? NetworkError.networkUnavailable
+    }
+
+    private static func isTransient(_ error: NetworkError) -> Bool {
+        switch error {
+        case .networkUnavailable, .blockedByBotProtection, .invalidResponse:
+            return true
+        case .httpError(let statusCode):
+            return statusCode >= 500
+        default:
+            return false
+        }
+    }
+
+    private static func isTransient(_ error: URLError) -> Bool {
+        switch error.code {
+        case .timedOut, .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet,
+             .dnsLookupFailed, .cannotFindHost:
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Browser session (claude.ai)
@@ -155,6 +229,7 @@ actor UsageService: UsageServiceProtocol {
 
                 // Cache the result
                 await cacheRepository.set(usageData)
+                lastSuccessfulSource = .browserSession
 
                 return usageData
 
@@ -192,9 +267,9 @@ actor UsageService: UsageServiceProtocol {
 
         // If all retries failed, fall back to the last known reading — but only
         // while it is recent enough to still describe the current window.
-        if let lastKnown = await cacheRepository.getLastKnown(),
-           Date().timeIntervalSince(lastKnown.lastUpdated) <= Constants.Cache.lastKnownMaxAge {
+        if let lastKnown = await recentLastKnown() {
             Self.logger.warning("All retries failed, using cached data")
+            lastSuccessfulSource = nil
             return lastKnown
         }
 

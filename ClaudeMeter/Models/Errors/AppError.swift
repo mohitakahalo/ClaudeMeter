@@ -17,6 +17,7 @@ enum AppError: LocalizedError {
     case organizationNotFound
     case cacheCorrupted
     case claudeCodeTokenExpired
+    case allSourcesUnavailable(claudeCode: String, browserSession: String)
 
     var errorDescription: String? {
         switch self {
@@ -36,6 +37,8 @@ enum AppError: LocalizedError {
             return "Cached data is corrupted. Fetching fresh data..."
         case .claudeCodeTokenExpired:
             return "Claude Code's session has expired. Run Claude Code to refresh it, or import a browser session."
+        case .allSourcesUnavailable(let claudeCode, let browserSession):
+            return "Couldn't read usage. Claude Code: \(claudeCode) Browser session: \(browserSession)"
         }
     }
 
@@ -44,7 +47,7 @@ enum AppError: LocalizedError {
         switch self {
         case .networkError, .cacheCorrupted, .apiResponseInvalid, .claudeCodeTokenExpired:
             return true
-        case .noSessionKey, .sessionKeyInvalid, .organizationNotFound, .keychainError:
+        case .noSessionKey, .sessionKeyInvalid, .organizationNotFound, .keychainError, .allSourcesUnavailable:
             return false
         }
     }
@@ -62,6 +65,8 @@ enum AppError: LocalizedError {
             return "Check Account"
         case .claudeCodeTokenExpired:
             return "Import Browser Session"
+        case .allSourcesUnavailable:
+            return "Update Session Key"
         default:
             return nil
         }

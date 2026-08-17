@@ -81,11 +81,15 @@ final class AppModel {
         settings = await settingsRepository.load()
         hasLoadedSettings = true
 
-        // Setup is complete when either credential source is usable: an
-        // imported browser session, or Claude Code's own signed-in token.
-        let hasSessionKey = await keychainRepository.exists(account: "default")
-        let hasClaudeCodeToken = await usageService.isAutomaticAuthAvailable()
-        isSetupComplete = hasSessionKey || hasClaudeCodeToken
+        // Setup is complete when either credential source is usable: Claude
+        // Code's own signed-in token, or an imported browser session. Claude
+        // Code is checked first so a machine that never imported a session
+        // never touches — and never prompts for — the session-key keychain item.
+        if await usageService.isAutomaticAuthAvailable() {
+            isSetupComplete = true
+        } else {
+            isSetupComplete = await keychainRepository.exists(account: "default")
+        }
         isReady = true
 
         if isSetupComplete {
@@ -134,7 +138,8 @@ final class AppModel {
     /// Errors the user resolves by re-supplying credentials.
     private static func isCredentialError(_ error: Error) -> Bool {
         switch error {
-        case AppError.sessionKeyInvalid, AppError.noSessionKey, AppError.claudeCodeTokenExpired:
+        case AppError.sessionKeyInvalid, AppError.noSessionKey, AppError.claudeCodeTokenExpired,
+             AppError.allSourcesUnavailable:
             return true
         case AppError.networkError(.authenticationFailed), NetworkError.authenticationFailed:
             return true

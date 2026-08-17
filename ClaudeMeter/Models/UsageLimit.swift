@@ -12,12 +12,35 @@ struct UsageLimit: Codable, Equatable, Sendable {
     /// Utilization percentage (0-100)
     let utilization: Double
 
-    /// ISO8601 timestamp when limit resets
+    /// ISO8601 timestamp when limit resets. When the API reports no reset time
+    /// this holds one window from now, so durations stay sane — but it is a
+    /// placeholder, and `isResetKnown` says so.
     let resetAt: Date
+
+    /// Whether `resetAt` came from the API. Pace and projection are meaningless
+    /// against a placeholder: they measure elapsed time from a window start
+    /// derived from the reset, which for a placeholder is "just now", and a
+    /// near-zero elapsed time yields absurd ratios.
+    let isResetKnown: Bool
+
+    init(utilization: Double, resetAt: Date, isResetKnown: Bool = true) {
+        self.utilization = utilization
+        self.resetAt = resetAt
+        self.isResetKnown = isResetKnown
+    }
 
     enum CodingKeys: String, CodingKey {
         case utilization
         case resetAt = "reset_at"
+        case isResetKnown = "is_reset_known"
+    }
+
+    /// Caches written before `isResetKnown` existed recorded only real reset times.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        utilization = try container.decode(Double.self, forKey: .utilization)
+        resetAt = try container.decode(Date.self, forKey: .resetAt)
+        isResetKnown = try container.decodeIfPresent(Bool.self, forKey: .isResetKnown) ?? true
     }
 }
 
@@ -42,7 +65,8 @@ extension UsageLimit {
 
     /// Human-readable reset time, rounded up to avoid understating remaining time.
     var resetDescription: String {
-        Self.resetDescription(for: resetAt.timeIntervalSinceNow)
+        guard isResetKnown else { return "when the window rolls over" }
+        return Self.resetDescription(for: resetAt.timeIntervalSinceNow)
     }
 
     static func resetDescription(for remaining: TimeInterval) -> String {
@@ -81,6 +105,7 @@ extension UsageLimit {
 
     /// Exact reset time formatted in user's timezone for tooltip display
     var resetTimeFormatted: String {
+        guard isResetKnown else { return "Not reported by Claude" }
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
@@ -95,7 +120,7 @@ extension UsageLimit {
 
     /// Check if reset time has passed but usage hasn't reset
     var isResetting: Bool {
-        resetAt < Date() && utilization > 0
+        isResetKnown && resetAt < Date() && utilization > 0
     }
 
     /// Ratio of usage fraction to elapsed-time fraction of the window.
@@ -122,7 +147,7 @@ extension UsageLimit {
     func expectedUsagePercent(windowDuration: TimeInterval, pacingDuration: TimeInterval? = nil) -> Double? {
         let pacing = pacingDuration ?? windowDuration
         let now = Date()
-        guard resetAt > now, pacing > 0 else { return nil }
+        guard isResetKnown, resetAt > now, pacing > 0 else { return nil }
 
         let windowStart = resetAt.addingTimeInterval(-windowDuration)
         let timeElapsedPct = min(now.timeIntervalSince(windowStart) / pacing, 1.0)
@@ -157,7 +182,7 @@ extension UsageLimit {
     ///   - pacingDuration: See `paceRatio(windowDuration:pacingDuration:)`
     func projectedEndPercent(windowDuration: TimeInterval, pacingDuration: TimeInterval? = nil) -> Double? {
         let now = Date()
-        guard resetAt > now else { return nil }
+        guard isResetKnown, resetAt > now else { return nil }
 
         let windowStart = resetAt.addingTimeInterval(-windowDuration)
         let elapsed = now.timeIntervalSince(windowStart)
@@ -180,7 +205,7 @@ extension UsageLimit {
     /// immediately rather than waiting out the elapsed-time grace window.
     func projectedLimitDate(windowDuration: TimeInterval, pacingDuration: TimeInterval? = nil) -> Date? {
         let now = Date()
-        guard !isExceeded, utilization >= Constants.Pacing.minimumUsageForProjection, resetAt > now else {
+        guard isResetKnown, !isExceeded, utilization >= Constants.Pacing.minimumUsageForProjection, resetAt > now else {
             return nil
         }
 

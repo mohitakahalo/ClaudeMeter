@@ -15,19 +15,40 @@ protocol ClaudeCodeCredentialsRepositoryProtocol: Actor {
 
 /// Reads the OAuth credentials Claude Code stores in the login keychain.
 ///
-/// The item is owned by Claude Code, so the first read prompts for keychain
-/// access; choosing "Always Allow" makes subsequent refreshes silent. Falls
-/// back to `~/.claude/.credentials.json`, which Claude Code writes when the
-/// keychain is unavailable.
+/// The item belongs to Claude Code, so the first read prompts for keychain
+/// access; "Always Allow" makes later reads silent. Credentials are held until
+/// they expire rather than re-read every poll, because someone who answered
+/// "Allow" (not "Always Allow"), or who denied the prompt, would otherwise face
+/// a dialog every refresh interval.
+///
+/// Reads only. Refreshing would rotate the refresh token and invalidate Claude
+/// Code's own copy.
 actor ClaudeCodeCredentialsRepository: ClaudeCodeCredentialsRepositoryProtocol {
     private static let logger = Logger(subsystem: "com.claudemeter", category: "ClaudeCodeCredentials")
     private static let serviceName = "Claude Code-credentials"
 
+    /// How long to wait before asking again after the keychain refuses.
+    private static let retryAfterRefusal: TimeInterval = 15 * 60
+
+    private var cached: ClaudeCodeCredentials?
+    private var nextAttemptAllowedAt: Date?
+
     func load() async -> ClaudeCodeCredentials? {
-        if let credentials = loadFromKeychain() {
+        if let cached, !cached.isExpired {
+            return cached
+        }
+
+        if let nextAttemptAllowedAt, nextAttemptAllowedAt > Date() {
+            return cached
+        }
+
+        if let credentials = loadFromKeychain() ?? loadFromFile() {
+            cached = credentials
+            nextAttemptAllowedAt = nil
             return credentials
         }
-        return loadFromFile()
+
+        return cached
     }
 
     private func loadFromKeychain() -> ClaudeCodeCredentials? {
@@ -43,8 +64,16 @@ actor ClaudeCodeCredentialsRepository: ClaudeCodeCredentialsRepositoryProtocol {
         let status = SecItemCopyMatching(query as CFDictionary, &item)
 
         guard status == errSecSuccess, let data = item as? Data else {
-            if status != errSecItemNotFound {
-                Self.logger.debug("Claude Code keychain read failed (OSStatus \(status))")
+            switch status {
+            case errSecItemNotFound:
+                Self.logger.info("Claude Code is not signed in on this machine")
+            case errSecAuthFailed, errSecUserCanceled, errSecInteractionNotAllowed, errSecInteractionRequired:
+                // The user dismissed or denied the prompt. Backing off keeps the
+                // dialog from reappearing on every refresh.
+                Self.logger.error("Keychain access to Claude Code's credentials was refused (OSStatus \(status)); retrying in \(Int(Self.retryAfterRefusal / 60)) minutes")
+                nextAttemptAllowedAt = Date().addingTimeInterval(Self.retryAfterRefusal)
+            default:
+                Self.logger.error("Claude Code keychain read failed (OSStatus \(status))")
             }
             return nil
         }

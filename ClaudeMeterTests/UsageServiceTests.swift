@@ -19,7 +19,8 @@ final class UsageServiceTests: XCTestCase {
             networkService: networkService,
             cacheRepository: cacheRepository,
             keychainRepository: keychainRepository,
-            settingsRepository: settingsRepository
+            settingsRepository: settingsRepository,
+            credentialsRepository: ClaudeCodeCredentialsRepositoryStub()
         )
 
         do {
@@ -43,7 +44,8 @@ final class UsageServiceTests: XCTestCase {
             networkService: networkService,
             cacheRepository: cacheRepository,
             keychainRepository: keychainRepository,
-            settingsRepository: settingsRepository
+            settingsRepository: settingsRepository,
+            credentialsRepository: ClaudeCodeCredentialsRepositoryStub()
         )
 
         try await keychainRepository.save(
@@ -82,7 +84,8 @@ final class UsageServiceTests: XCTestCase {
             networkService: networkService,
             cacheRepository: cacheRepository,
             keychainRepository: keychainRepository,
-            settingsRepository: settingsRepository
+            settingsRepository: settingsRepository,
+            credentialsRepository: ClaudeCodeCredentialsRepositoryStub()
         )
 
         try await keychainRepository.save(
@@ -124,7 +127,8 @@ final class UsageServiceTests: XCTestCase {
             networkService: networkService,
             cacheRepository: cacheRepository,
             keychainRepository: keychainRepository,
-            settingsRepository: settingsRepository
+            settingsRepository: settingsRepository,
+            credentialsRepository: ClaudeCodeCredentialsRepositoryStub()
         )
 
         try await keychainRepository.save(
@@ -161,7 +165,8 @@ final class UsageServiceTests: XCTestCase {
             networkService: networkService,
             cacheRepository: cacheRepository,
             keychainRepository: keychainRepository,
-            settingsRepository: settingsRepository
+            settingsRepository: settingsRepository,
+            credentialsRepository: ClaudeCodeCredentialsRepositoryStub()
         )
 
         try await keychainRepository.save(
@@ -200,7 +205,8 @@ final class UsageServiceTests: XCTestCase {
             networkService: networkService,
             cacheRepository: cacheRepository,
             keychainRepository: keychainRepository,
-            settingsRepository: settingsRepository
+            settingsRepository: settingsRepository,
+            credentialsRepository: ClaudeCodeCredentialsRepositoryStub()
         )
 
         try await keychainRepository.save(
@@ -241,7 +247,8 @@ final class UsageServiceTests: XCTestCase {
             networkService: networkService,
             cacheRepository: cacheRepository,
             keychainRepository: keychainRepository,
-            settingsRepository: settingsRepository
+            settingsRepository: settingsRepository,
+            credentialsRepository: ClaudeCodeCredentialsRepositoryStub()
         )
 
         try await keychainRepository.save(
@@ -285,7 +292,8 @@ final class UsageServiceTests: XCTestCase {
             networkService: networkService,
             cacheRepository: cacheRepository,
             keychainRepository: keychainRepository,
-            settingsRepository: settingsRepository
+            settingsRepository: settingsRepository,
+            credentialsRepository: ClaudeCodeCredentialsRepositoryStub()
         )
 
         try await keychainRepository.save(

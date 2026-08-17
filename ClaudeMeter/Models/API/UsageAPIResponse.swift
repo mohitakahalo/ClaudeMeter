@@ -190,7 +190,8 @@ extension UsageAPIResponse {
                 from: entry.resetsAt,
                 field: "\(entry.kind).resets_at",
                 fallback: fallback
-            )
+            ),
+            isResetKnown: entry.resetsAt != nil
         )
     }
 

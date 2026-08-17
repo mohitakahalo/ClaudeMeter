@@ -22,7 +22,7 @@ final class PaceSignalTests: XCTestCase {
     }
 
     private func usageData(session: UsageLimit, weekly: UsageLimit) -> UsageData {
-        UsageData(sessionUsage: session, weeklyUsage: weekly, sonnetUsage: nil, lastUpdated: Date())
+        UsageData(sessionUsage: session, weeklyUsage: weekly, scopedUsage: [], lastUpdated: Date())
     }
 
     // MARK: - paceRatio
