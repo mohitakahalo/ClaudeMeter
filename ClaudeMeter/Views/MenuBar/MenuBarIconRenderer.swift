@@ -17,7 +17,7 @@ struct MenuBarIconRenderer {
         isLoading: Bool,
         isStale: Bool,
         iconStyle: IconStyle,
-        weeklyPercentage: Double = 0,
+        weeklyPercentage: Double? = nil,
         isColored: Bool = true,
         paceKind: PaceKind? = nil,
         paceRatio: Double? = nil

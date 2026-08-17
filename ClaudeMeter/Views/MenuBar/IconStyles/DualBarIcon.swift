@@ -7,10 +7,14 @@
 
 import SwiftUI
 
-/// Dual bar menu bar icon showing session (top) and weekly (bottom) usage
+/// Dual bar menu bar icon showing session (top) and weekly (bottom) usage.
+///
+/// Falls back to a single session bar when the account has no weekly limit:
+/// a full-width empty bar is indistinguishable from an untouched weekly quota,
+/// which reads as reassuring rather than as "not applicable".
 struct DualBarIcon: View {
-    let percentage: Double        // Session percentage
-    let weeklyPercentage: Double  // Weekly percentage
+    let percentage: Double         // Session percentage
+    let weeklyPercentage: Double?  // Weekly percentage, nil when the account has no weekly limit
     let status: UsageStatus
     let isLoading: Bool
     let isStale: Bool
@@ -38,13 +42,16 @@ struct DualBarIcon: View {
                     )
                     .frame(width: barWidth, height: barHeight)
 
-                    // Weekly bar (bottom) - purple
-                    ProgressBar(
-                        percentage: weeklyPercentage,
-                        color: weeklyBarColor,
-                        isStale: isStale
-                    )
-                    .frame(width: barWidth, height: barHeight)
+                    // Weekly bar (bottom) - purple. Omitted entirely when there
+                    // is no weekly limit, leaving a single centred session bar.
+                    if let weeklyPercentage {
+                        ProgressBar(
+                            percentage: weeklyPercentage,
+                            color: weeklyBarColor,
+                            isStale: isStale
+                        )
+                        .frame(width: barWidth, height: barHeight)
+                    }
                 }
 
                 // Show session percentage (or pace, primary metric)
@@ -61,7 +68,10 @@ struct DualBarIcon: View {
         }
         .frame(height: 22)
         .padding(.horizontal, 4)
-        .accessibilityLabel("Session: \(Int(percentage)) percent, Weekly: \(Int(weeklyPercentage)) percent")
+        .accessibilityLabel(
+            weeklyPercentage.map { "Session: \(Int(percentage)) percent, Weekly: \(Int($0)) percent" }
+                ?? "Session: \(Int(percentage)) percent, no weekly limit"
+        )
         .accessibilityValue(status.accessibilityDescription)
     }
 

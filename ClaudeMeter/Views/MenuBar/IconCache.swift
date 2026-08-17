@@ -21,7 +21,7 @@ final class IconCache {
         isLoading: Bool,
         isStale: Bool,
         iconStyle: IconStyle,
-        weeklyPercentage: Double,
+        weeklyPercentage: Double?,
         isColored: Bool,
         paceKind: PaceKind?,
         paceRatio: Double?
@@ -46,7 +46,7 @@ final class IconCache {
         isLoading: Bool,
         isStale: Bool,
         iconStyle: IconStyle,
-        weeklyPercentage: Double,
+        weeklyPercentage: Double?,
         isColored: Bool,
         paceKind: PaceKind?,
         paceRatio: Double?
@@ -73,13 +73,15 @@ final class IconCache {
         isLoading: Bool,
         isStale: Bool,
         iconStyle: IconStyle,
-        weeklyPercentage: Double,
+        weeklyPercentage: Double?,
         isColored: Bool,
         paceKind: PaceKind?,
         paceRatio: Double?
     ) -> NSString {
         let percent = String(format: "%.2f", percentage)
-        let weekly = String(format: "%.2f", weeklyPercentage)
+        // "none" must not collide with a real 0%: an account with no weekly
+        // limit renders a different icon from one sitting at zero.
+        let weekly = weeklyPercentage.map { String(format: "%.2f", $0) } ?? "none"
         let pace = paceKind?.rawValue ?? "none"
         // The displayed ratio is rounded to 1 decimal, but its rendered color is a
         // function of the full-precision value. Two ratios that round equal can

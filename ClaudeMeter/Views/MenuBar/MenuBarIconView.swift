@@ -14,7 +14,7 @@ struct MenuBarIconView: View {
     let isLoading: Bool
     let isStale: Bool
     let iconStyle: IconStyle
-    var weeklyPercentage: Double = 0  // Optional, used by dualBar style
+    var weeklyPercentage: Double?  // Used by dualBar style; nil when the account has no weekly limit
     var paceKind: PaceKind?  // Optional off-pace badge (flame/snowflake)
     var paceRatio: Double?  // Pace-first display: replaces the quota text with this ratio
 
