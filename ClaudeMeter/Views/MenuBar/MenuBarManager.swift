@@ -18,6 +18,7 @@ final class MenuBarManager {
     private let iconCache = IconCache()
     private let iconRenderer = MenuBarIconRenderer()
     private var openUsageObserver: NSObjectProtocol?
+    private var repaintTask: Task<Void, Never>?
 
     init(appModel: AppModel) {
         self.appModel = appModel
@@ -28,6 +29,7 @@ final class MenuBarManager {
         createPopover()
         observeIconUpdates()
         observeOpenPopoverRequests()
+        startRepaintClock()
 
         Task {
             await appModel.bootstrap()
@@ -42,10 +44,12 @@ final class MenuBarManager {
         createPopover()
         observeIconUpdates()
         observeOpenPopoverRequests()
+        startRepaintClock()
     }
     #endif
 
     deinit {
+        repaintTask?.cancel()
         if let openUsageObserver {
             NotificationCenter.default.removeObserver(openUsageObserver)
         }
@@ -97,10 +101,27 @@ final class MenuBarManager {
 
     // MARK: - Observation
 
+    /// Repaints on a clock as well as on change.
+    ///
+    /// Staleness is a function of elapsed time, and a failing refresh mutates
+    /// no observed property, so without this the icon freezes mid-outage and
+    /// the stale treatment every icon style implements never appears.
+    private func startRepaintClock() {
+        repaintTask?.cancel()
+        repaintTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Constants.Refresh.repaintInterval))
+                guard !Task.isCancelled else { return }
+                self?.updateIcon()
+            }
+        }
+    }
+
     private func observeIconUpdates() {
         withObservationTracking {
             _ = appModel.usageData
             _ = appModel.isLoading
+            _ = appModel.errorMessage
             _ = appModel.settings.iconStyle
             _ = appModel.settings.isColoredIcon
             _ = appModel.settings.weeklyPaceDays
@@ -121,7 +142,10 @@ final class MenuBarManager {
         let weeklyPercentage = clamped(appModel.usageData?.weeklyUsage.percentage ?? 0)
         let status = appModel.usageData?.primaryStatus ?? .safe
         let isStale = appModel.usageData?.isStale ?? false
-        let isLoading = appModel.isLoading
+        // With no reading at all, show the indeterminate icon rather than the
+        // "0% used, all safe" one — a green empty meter is indistinguishable
+        // from a healthy account, which is how a broken fetch went unnoticed.
+        let isLoading = appModel.isLoading || appModel.usageData == nil
         let style = appModel.settings.iconStyle
         let isColored = appModel.settings.isColoredIcon
         let settings = appModel.settings

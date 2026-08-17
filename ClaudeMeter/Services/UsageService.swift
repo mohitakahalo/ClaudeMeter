@@ -161,21 +161,18 @@ actor UsageService: UsageServiceProtocol {
             } catch NetworkError.networkUnavailable {
                 Self.logger.warning("Network unavailable (attempt \(attempt + 1)/\(self.maxRetries))")
                 lastError = NetworkError.networkUnavailable
-                let delay = pow(Constants.Network.backoffBase, Double(attempt))
-                try await Task.sleep(for: .seconds(delay))
+                try await backOff(base: Constants.Network.backoffBase, attempt: attempt)
             } catch NetworkError.rateLimitExceeded {
                 // Rate limit hit - use longer exponential backoff
                 Self.logger.warning("Rate limit exceeded (attempt \(attempt + 1)/\(self.maxRetries))")
                 lastError = NetworkError.rateLimitExceeded
-                let delay = pow(Constants.Network.rateLimitBackoffBase, Double(attempt))
-                try await Task.sleep(for: .seconds(delay))
+                try await backOff(base: Constants.Network.rateLimitBackoffBase, attempt: attempt)
             } catch NetworkError.blockedByBotProtection {
                 // Cloudflare interstitial - transient, and never a reason to
                 // tell the user their session expired.
                 Self.logger.warning("Blocked by bot protection (attempt \(attempt + 1)/\(self.maxRetries))")
                 lastError = NetworkError.blockedByBotProtection
-                let delay = pow(Constants.Network.rateLimitBackoffBase, Double(attempt))
-                try await Task.sleep(for: .seconds(delay))
+                try await backOff(base: Constants.Network.rateLimitBackoffBase, attempt: attempt)
             } catch NetworkError.authenticationFailed {
                 Self.logger.error("Authentication failed - session key invalid")
                 throw AppError.sessionKeyInvalid
@@ -186,22 +183,30 @@ actor UsageService: UsageServiceProtocol {
                 // Retry on timeout and connection errors
                 Self.logger.warning("URL error: \(error.localizedDescription) (attempt \(attempt + 1)/\(self.maxRetries))")
                 lastError = error
-                let delay = pow(Constants.Network.backoffBase, Double(attempt))
-                try await Task.sleep(for: .seconds(delay))
+                try await backOff(base: Constants.Network.backoffBase, attempt: attempt)
             } catch {
                 Self.logger.error("API request failed: \(error.localizedDescription)")
                 throw AppError.networkError(error as? NetworkError ?? .invalidResponse)
             }
         }
 
-        // If all retries failed, check for last known data
-        if let lastKnown = await cacheRepository.getLastKnown() {
+        // If all retries failed, fall back to the last known reading — but only
+        // while it is recent enough to still describe the current window.
+        if let lastKnown = await cacheRepository.getLastKnown(),
+           Date().timeIntervalSince(lastKnown.lastUpdated) <= Constants.Cache.lastKnownMaxAge {
             Self.logger.warning("All retries failed, using cached data")
             return lastKnown
         }
 
         Self.logger.error("All retries failed, no cached data available")
         throw AppError.networkError(lastError as? NetworkError ?? .networkUnavailable)
+    }
+
+    /// Exponential backoff between attempts. The final attempt is not followed
+    /// by a sleep, which otherwise delays the error the user is waiting on.
+    private func backOff(base: Double, attempt: Int) async throws {
+        guard attempt < maxRetries - 1 else { return }
+        try await Task.sleep(for: .seconds(pow(base, Double(attempt))))
     }
 
     /// Fetch list of organizations for the user

@@ -16,6 +16,12 @@ actor NetworkService: NetworkServiceProtocol {
     init(configuration: URLSessionConfiguration = .default) {
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 30
+        // Send only the cookie built from the stored session key. Sharing the
+        // process cookie jar lets a stale claude.ai cookie override it, so a
+        // freshly imported session keeps failing with 403.
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieStorage = nil
+        configuration.httpCookieAcceptPolicy = .never
         self.session = URLSession(configuration: configuration)
     }
 

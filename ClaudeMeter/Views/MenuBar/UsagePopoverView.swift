@@ -80,7 +80,7 @@ struct UsagePopoverView: View {
                         .buttonStyle(.bordered)
 
                         // Update Key button for authentication errors
-                        if errorMessage.contains("invalid") || errorMessage.contains("expired") || errorMessage.contains("authentication") {
+                        if appModel.isCredentialError {
                             Button("Update Session Key") {
                                 openSettingsFront()
                             }

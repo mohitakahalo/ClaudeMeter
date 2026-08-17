@@ -24,8 +24,9 @@ struct AppSettings: Codable, Equatable, Sendable {
     /// Last known organization ID (cached)
     var cachedOrganizationId: UUID?
 
-    /// Model-scoped limits the user has opted into showing, by API display name.
-    /// Empty by default: nothing appears in the popover until the user asks for it.
+    /// Model-scoped limits shown in the popover, by API display name.
+    /// The models Claude currently meters separately are shown by default;
+    /// a name the API introduces later stays hidden until asked for.
     var shownScopedModels: Set<String>
 
     /// Menu bar icon display style
@@ -48,7 +49,7 @@ struct AppSettings: Codable, Equatable, Sendable {
         notificationThresholds: .default,
         isFirstLaunch: true,
         cachedOrganizationId: nil,
-        shownScopedModels: [],
+        shownScopedModels: ["Opus", "Sonnet", "Fable"],
         iconStyle: .battery,
         isColoredIcon: true,
         weeklyPaceDays: 7,

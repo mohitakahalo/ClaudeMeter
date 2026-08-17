@@ -16,6 +16,11 @@ enum Constants {
 
         /// Maximum number of cached icons
         static let maxIconCacheSize = 100
+
+        /// Oldest last-known-good reading still worth showing when every
+        /// request fails. Beyond this the meter reports no data rather than
+        /// presenting hours-old numbers as current.
+        static let lastKnownMaxAge: TimeInterval = 6 * 60 * 60
     }
 
     /// API endpoints
@@ -53,6 +58,10 @@ enum Constants {
 
         /// Staleness threshold (2x max refresh interval to account for retries/delays)
         static let stalenessThreshold: TimeInterval = 1200
+
+        /// How often the menu bar icon repaints regardless of state changes,
+        /// so staleness becomes visible during an outage
+        static let repaintInterval: TimeInterval = 60
     }
 
     /// Pacing/risk calculation configuration

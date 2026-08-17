@@ -25,6 +25,10 @@ final class AppModel {
     /// Credential source the last successful fetch used
     var activeSource: UsageDataSource?
 
+    /// Whether the current error is fixed by supplying credentials again.
+    /// Derived from the typed error, not by matching words in its message.
+    var isCredentialError: Bool = false
+
     // MARK: - Dependencies
 
     @ObservationIgnored private let settingsRepository: SettingsRepositoryProtocol
@@ -106,6 +110,7 @@ final class AppModel {
         }
         isRefreshing = true
         errorMessage = nil
+        isCredentialError = false
 
         defer {
             isLoading = false
@@ -122,6 +127,19 @@ final class AppModel {
             )
         } catch {
             errorMessage = error.localizedDescription
+            isCredentialError = Self.isCredentialError(error)
+        }
+    }
+
+    /// Errors the user resolves by re-supplying credentials.
+    private static func isCredentialError(_ error: Error) -> Bool {
+        switch error {
+        case AppError.sessionKeyInvalid, AppError.noSessionKey, AppError.claudeCodeTokenExpired:
+            return true
+        case AppError.networkError(.authenticationFailed), NetworkError.authenticationFailed:
+            return true
+        default:
+            return false
         }
     }
 
