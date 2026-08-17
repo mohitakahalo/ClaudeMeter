@@ -16,23 +16,79 @@ struct UsageAPIResponse: Codable {
     let sevenDay: UsageLimitResponse?
     let sevenDaySonnet: UsageLimitResponse?
 
+    /// Extra-usage credits, in the API's current money shape.
+    let spend: SpendResponse?
+
+    /// The older credits block. Same numbers, flatter shape; still sent
+    /// alongside `spend`, and the only source for accounts not yet migrated.
+    let extraUsage: ExtraUsageResponse?
+
     init(
         fiveHour: UsageLimitResponse? = nil,
         sevenDay: UsageLimitResponse? = nil,
         sevenDaySonnet: UsageLimitResponse? = nil,
-        limits: [LimitEntryResponse]? = nil
+        limits: [LimitEntryResponse]? = nil,
+        spend: SpendResponse? = nil,
+        extraUsage: ExtraUsageResponse? = nil
     ) {
         self.fiveHour = fiveHour
         self.sevenDay = sevenDay
         self.sevenDaySonnet = sevenDaySonnet
         self.limits = limits
+        self.spend = spend
+        self.extraUsage = extraUsage
     }
 
     enum CodingKeys: String, CodingKey {
         case limits
+        case spend
         case fiveHour = "five_hour"
         case sevenDay = "seven_day"
         case sevenDaySonnet = "seven_day_sonnet"
+        case extraUsage = "extra_usage"
+    }
+}
+
+/// ```json
+/// "spend": { "used":  { "amount_minor": 2765, "currency": "USD", "exponent": 2 },
+///            "limit": { "amount_minor": 5000, "currency": "USD", "exponent": 2 },
+///            "enabled": true }
+/// ```
+struct SpendResponse: Codable {
+    struct Money: Codable {
+        let amountMinor: Int
+        let currency: String?
+        let exponent: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case amountMinor = "amount_minor"
+            case currency
+            case exponent
+        }
+    }
+
+    let used: Money?
+    let limit: Money?
+    let enabled: Bool?
+}
+
+/// ```json
+/// "extra_usage": { "used_credits": 2765.0, "monthly_limit": 5000,
+///                  "currency": "USD", "decimal_places": 2, "is_enabled": true }
+/// ```
+struct ExtraUsageResponse: Codable {
+    let usedCredits: Double?
+    let monthlyLimit: Double?
+    let currency: String?
+    let decimalPlaces: Int?
+    let isEnabled: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case usedCredits = "used_credits"
+        case monthlyLimit = "monthly_limit"
+        case currency
+        case decimalPlaces = "decimal_places"
+        case isEnabled = "is_enabled"
     }
 }
 
@@ -128,15 +184,51 @@ extension UsageAPIResponse {
         guard let sessionEntry = entry(ofKind: LimitEntryResponse.Kind.session, legacy: fiveHour) else {
             throw MappingError.missingCriticalField(field: "five_hour")
         }
-        guard let weeklyEntry = entry(ofKind: LimitEntryResponse.Kind.weeklyAll, legacy: sevenDay) else {
-            throw MappingError.missingCriticalField(field: "seven_day")
-        }
+        // The weekly window is not critical. Accounts the API meters only on the
+        // 5-hour window come back with no `weekly_all` entry and a null
+        // `seven_day`, and failing the whole response over it threw away a
+        // perfectly good session reading — blanking the meter completely.
+        let weeklyEntry = entry(ofKind: LimitEntryResponse.Kind.weeklyAll, legacy: sevenDay)
 
         return UsageData(
             sessionUsage: try usageLimit(from: sessionEntry, fallback: Constants.Pacing.sessionWindow),
-            weeklyUsage: try usageLimit(from: weeklyEntry, fallback: Constants.Pacing.weeklyWindow),
+            weeklyUsage: try weeklyEntry.map { try usageLimit(from: $0, fallback: Constants.Pacing.weeklyWindow) },
             scopedUsage: try scopedUsage(),
+            spendUsage: spendUsage(),
             lastUpdated: Date()
+        )
+    }
+
+    /// Credits, from whichever block the account is served.
+    ///
+    /// `spend` wins: it carries the currency's exponent explicitly, so the
+    /// amounts need no guessing. `extra_usage` is read only when `spend` is
+    /// absent, and a cap of zero is treated as "no credit budget" rather than
+    /// as a budget that is fully spent.
+    private func spendUsage() -> SpendUsage? {
+        if let spend, let used = spend.used, let limit = spend.limit, limit.amountMinor > 0 {
+            return SpendUsage(
+                usedMinor: used.amountMinor,
+                limitMinor: limit.amountMinor,
+                currencyCode: used.currency ?? limit.currency ?? "USD",
+                exponent: used.exponent ?? limit.exponent ?? 2,
+                isEnabled: spend.enabled ?? true
+            )
+        }
+
+        guard let extraUsage,
+              let used = extraUsage.usedCredits,
+              let limit = extraUsage.monthlyLimit,
+              limit > 0 else {
+            return nil
+        }
+
+        return SpendUsage(
+            usedMinor: Int(used.rounded()),
+            limitMinor: Int(limit.rounded()),
+            currencyCode: extraUsage.currency ?? "USD",
+            exponent: extraUsage.decimalPlaces ?? 2,
+            isEnabled: extraUsage.isEnabled ?? true
         )
     }
 

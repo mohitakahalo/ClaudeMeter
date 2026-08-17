@@ -107,16 +107,23 @@ struct UsagePopoverView: View {
                             isPaceFirst: appModel.settings.isPaceFirstDisplay
                         )
 
-                        // Weekly usage card
-                        UsageCardView(
-                            title: weeklyCardTitle("Weekly Usage"),
-                            usageLimit: usageData.weeklyUsage,
-                            icon: "calendar",
-                            windowDuration: Constants.Pacing.weeklyWindow,
-                            pacingDuration: weeklyPacingDuration,
-                            showsUnderuse: true,
-                            isPaceFirst: appModel.settings.isPaceFirstDisplay
-                        )
+                        // Weekly usage card, only for accounts that have a
+                        // 7-day limit — the API omits it for the rest.
+                        if let weeklyUsage = usageData.weeklyUsage {
+                            UsageCardView(
+                                title: weeklyCardTitle("Weekly Usage"),
+                                usageLimit: weeklyUsage,
+                                icon: "calendar",
+                                windowDuration: Constants.Pacing.weeklyWindow,
+                                pacingDuration: weeklyPacingDuration,
+                                showsUnderuse: true,
+                                isPaceFirst: appModel.settings.isPaceFirstDisplay
+                            )
+                        }
+
+                        if let spendUsage = usageData.spendUsage {
+                            SpendCardView(spend: spendUsage)
+                        }
 
                         ForEach(usageData.scopedUsage.filter { appModel.settings.isScopedModelShown($0.name) }) { scoped in
                             UsageCardView(

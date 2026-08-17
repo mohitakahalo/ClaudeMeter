@@ -69,7 +69,10 @@ actor UsageService: UsageServiceProtocol {
                     await cacheRepository.set(usageData)
                     return usageData
                 } catch {
-                    Self.logger.error("OAuth usage fetch failed: \(error.localizedDescription)")
+                    // Public: an error description is a diagnosis, not a secret,
+                    // and redacting it leaves the log saying only that
+                    // something failed.
+                    Self.logger.error("OAuth usage fetch failed: \(String(describing: error), privacy: .public)")
                     oauthError = error
                 }
             }
@@ -260,7 +263,7 @@ actor UsageService: UsageServiceProtocol {
                 lastError = error
                 try await backOff(base: Constants.Network.backoffBase, attempt: attempt)
             } catch {
-                Self.logger.error("API request failed: \(error.localizedDescription)")
+                Self.logger.error("API request failed: \(String(describing: error), privacy: .public)")
                 throw AppError.networkError(error as? NetworkError ?? .invalidResponse)
             }
         }

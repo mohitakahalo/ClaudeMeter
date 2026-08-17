@@ -12,11 +12,18 @@ struct UsageData: Codable, Equatable, Sendable {
     /// 5-hour rolling session usage
     let sessionUsage: UsageLimit
 
-    /// 7-day weekly usage across all models
-    let weeklyUsage: UsageLimit
+    /// 7-day weekly usage across all models, when the account has such a limit.
+    ///
+    /// Not every plan is metered on a 7-day window, and for those the API omits
+    /// the entry entirely. A synthesised zero would render as a healthy, empty
+    /// week rather than "not applicable", so absence is carried as absence.
+    let weeklyUsage: UsageLimit?
 
     /// 7-day limits scoped to a specific model, in the order the API reported them
     let scopedUsage: [ScopedUsageLimit]
+
+    /// Extra-usage credits, for accounts that have them enabled
+    let spendUsage: SpendUsage?
 
     /// Timestamp of when this data was fetched
     let lastUpdated: Date
@@ -25,6 +32,7 @@ struct UsageData: Codable, Equatable, Sendable {
         case sessionUsage = "session_usage"
         case weeklyUsage = "weekly_usage"
         case scopedUsage = "scoped_usage"
+        case spendUsage = "spend_usage"
         case lastUpdated = "last_updated"
     }
 
@@ -40,7 +48,8 @@ extension UsageData {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         sessionUsage = try container.decode(UsageLimit.self, forKey: .sessionUsage)
-        weeklyUsage = try container.decode(UsageLimit.self, forKey: .weeklyUsage)
+        weeklyUsage = try container.decodeIfPresent(UsageLimit.self, forKey: .weeklyUsage)
+        spendUsage = try container.decodeIfPresent(SpendUsage.self, forKey: .spendUsage)
         lastUpdated = try container.decode(Date.self, forKey: .lastUpdated)
 
         if let scoped = try container.decodeIfPresent([ScopedUsageLimit].self, forKey: .scopedUsage) {
@@ -85,7 +94,7 @@ extension UsageData {
     func paceSignal(weeklyPaceDays: Int) -> PaceSignal? {
         let weeklyPacing = Constants.Pacing.weeklyPacingDuration(days: weeklyPaceDays)
         let sessionRatio = sessionUsage.paceRatio(windowDuration: Constants.Pacing.sessionWindow)
-        let weeklyRatio = weeklyUsage.paceRatio(
+        let weeklyRatio = weeklyUsage?.paceRatio(
             windowDuration: Constants.Pacing.weeklyWindow,
             pacingDuration: weeklyPacing
         )
@@ -97,7 +106,7 @@ extension UsageData {
                 windowDuration: Constants.Pacing.sessionWindow
             ))
         }
-        if let weeklyRatio, weeklyRatio > Constants.Pacing.riskThreshold {
+        if let weeklyUsage, let weeklyRatio, weeklyRatio > Constants.Pacing.riskThreshold {
             hotSignals.append(makeSignal(
                 .hot, limit: weeklyUsage, ratio: weeklyRatio, windowName: "7-day",
                 windowDuration: Constants.Pacing.weeklyWindow, pacingDuration: weeklyPacing, paceDays: weeklyPaceDays
@@ -107,7 +116,7 @@ extension UsageData {
             return hottest
         }
 
-        if let weeklyRatio, weeklyRatio < Constants.Pacing.underuseThreshold {
+        if let weeklyUsage, let weeklyRatio, weeklyRatio < Constants.Pacing.underuseThreshold {
             return makeSignal(
                 .cold, limit: weeklyUsage, ratio: weeklyRatio, windowName: "7-day",
                 windowDuration: Constants.Pacing.weeklyWindow, pacingDuration: weeklyPacing, paceDays: weeklyPaceDays
@@ -124,7 +133,7 @@ extension UsageData {
     /// ratio yet (both inside the grace period / post-reset).
     func fallbackPaceRatio(weeklyPaceDays: Int) -> Double? {
         let sessionRatio = sessionUsage.paceRatio(windowDuration: Constants.Pacing.sessionWindow)
-        let weeklyRatio = weeklyUsage.paceRatio(
+        let weeklyRatio = weeklyUsage?.paceRatio(
             windowDuration: Constants.Pacing.weeklyWindow,
             pacingDuration: Constants.Pacing.weeklyPacingDuration(days: weeklyPaceDays)
         )

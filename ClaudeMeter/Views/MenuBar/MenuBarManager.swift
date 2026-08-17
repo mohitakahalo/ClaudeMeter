@@ -139,7 +139,7 @@ final class MenuBarManager {
         guard let button = statusItem?.button else { return }
 
         let percentage = clamped(appModel.usageData?.sessionUsage.percentage ?? 0)
-        let weeklyPercentage = clamped(appModel.usageData?.weeklyUsage.percentage ?? 0)
+        let weeklyPercentage = clamped(appModel.usageData?.weeklyUsage?.percentage ?? 0)
         let status = appModel.usageData?.primaryStatus ?? .safe
         let isStale = appModel.usageData?.isStale ?? false
         // With no reading at all, show the indeterminate icon rather than the
