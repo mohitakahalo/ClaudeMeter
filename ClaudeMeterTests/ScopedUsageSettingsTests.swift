@@ -10,25 +10,21 @@ final class ScopedUsageSettingsTests: XCTestCase {
 
     // MARK: - Settings migration
 
-    func test_decode_withLegacyShowSonnetTrue_showsSonnet() throws {
+    /// The models Claude currently meters separately, shown unless the user hides them.
+    private let defaultShownModels: Set<String> = ["Opus", "Sonnet", "Fable"]
+
+    /// The pre-1.4.2 flag governed a Sonnet-only field the API now returns as
+    /// null, so it says nothing about today's scoped limits either way.
+    func test_decode_withLegacyShowSonnetTrue_takesDefaults() throws {
         let settings = try decodeSettings(#"{"show_sonnet_usage": true}"#)
 
-        XCTAssertEqual(settings.shownScopedModels, ["Sonnet"])
-        XCTAssertTrue(settings.isScopedModelShown("Sonnet"))
+        XCTAssertEqual(settings.shownScopedModels, defaultShownModels)
     }
 
-    func test_decode_withLegacyShowSonnetTrue_doesNotOptIntoOtherModels() throws {
-        let settings = try decodeSettings(#"{"show_sonnet_usage": true}"#)
-
-        XCTAssertFalse(settings.isScopedModelShown("Fable"))
-    }
-
-    func test_decode_withLegacyShowSonnetFalse_showsNothing() throws {
+    func test_decode_withLegacyShowSonnetFalse_takesDefaults() throws {
         let settings = try decodeSettings(#"{"show_sonnet_usage": false}"#)
 
-        XCTAssertTrue(settings.shownScopedModels.isEmpty)
-        XCTAssertFalse(settings.isScopedModelShown("Sonnet"))
-        XCTAssertFalse(settings.isScopedModelShown("Fable"))
+        XCTAssertEqual(settings.shownScopedModels, defaultShownModels)
     }
 
     /// The settings shape written by the 1.4.0 release.
@@ -45,9 +41,7 @@ final class ScopedUsageSettingsTests: XCTestCase {
         XCTAssertFalse(settings.isColoredIcon)
         XCTAssertEqual(settings.refreshInterval, 60)
 
-        // The Sonnet opt-out is preserved, and nothing is opted in on the user's behalf
-        XCTAssertFalse(settings.isScopedModelShown("Sonnet"))
-        XCTAssertFalse(settings.isScopedModelShown("Fable"))
+        XCTAssertEqual(settings.shownScopedModels, defaultShownModels)
     }
 
     func test_decode_withShownScopedModels_roundTrips() throws {
@@ -57,22 +51,35 @@ final class ScopedUsageSettingsTests: XCTestCase {
         XCTAssertFalse(settings.isScopedModelShown("Opus"))
     }
 
-    func test_decode_withNeitherKey_showsNothing() throws {
-        let settings = try decodeSettings("{}")
+    /// Hiding every model is a choice, not a missing key, and must survive a relaunch.
+    func test_decode_withEmptyShownScopedModels_showsNothing() throws {
+        let settings = try decodeSettings(#"{"shown_scoped_models": []}"#)
 
         XCTAssertTrue(settings.shownScopedModels.isEmpty)
         XCTAssertFalse(settings.isScopedModelShown("Fable"))
     }
 
+    func test_decode_withNeitherKey_takesDefaults() throws {
+        let settings = try decodeSettings("{}")
+
+        XCTAssertEqual(settings.shownScopedModels, defaultShownModels)
+    }
+
+    /// A model the API introduces later stays hidden until asked for.
+    func test_default_hidesModelsNotYetMetered() {
+        XCTAssertFalse(AppSettings.default.isScopedModelShown("Haiku"))
+    }
+
     func test_setScopedModel_togglesVisibility() {
         var settings = AppSettings.default
 
-        settings.setScopedModel("Fable", isShown: true)
-        XCTAssertTrue(settings.isScopedModelShown("Fable"))
-
         settings.setScopedModel("Fable", isShown: false)
         XCTAssertFalse(settings.isScopedModelShown("Fable"))
-        XCTAssertTrue(settings.shownScopedModels.isEmpty)
+        XCTAssertEqual(settings.shownScopedModels, ["Opus", "Sonnet"])
+
+        settings.setScopedModel("Fable", isShown: true)
+        XCTAssertTrue(settings.isScopedModelShown("Fable"))
+        XCTAssertEqual(settings.shownScopedModels, defaultShownModels)
     }
 
     // MARK: - Public JSON export
@@ -88,10 +95,12 @@ final class ScopedUsageSettingsTests: XCTestCase {
         XCTAssertEqual(scoped.compactMap { $0["name"] as? String }, ["Sonnet", "Fable"])
     }
 
-    func test_export_withoutSonnet_omitsLegacyKey() throws {
+    /// The key stays present as null: scripts read it by name, and a key that
+    /// vanishes on some accounts is a breaking change for them.
+    func test_export_withoutSonnet_emitsNullLegacyKey() throws {
         let json = try exportJSON(makeUsageData(percentage: 10, scoped: [("Fable", 23)]))
 
-        XCTAssertNil(json["sonnet_usage"])
+        XCTAssertTrue(json["sonnet_usage"] is NSNull)
         XCTAssertEqual((json["scoped_usage"] as? [[String: Any]])?.count, 1)
     }
 
