@@ -148,6 +148,7 @@ actor UsageService: UsageServiceProtocol {
                 )
                 return try response.toDomain()
             } catch NetworkError.authenticationFailed {
+                await credentialsRepository.invalidate(credentials)
                 throw AppError.claudeCodeTokenExpired
             } catch NetworkError.rateLimitExceeded {
                 lastError = NetworkError.rateLimitExceeded

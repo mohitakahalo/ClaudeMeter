@@ -11,6 +11,10 @@ import Security
 protocol ClaudeCodeCredentialsRepositoryProtocol: Actor {
     /// Load the current credentials, or nil when Claude Code is not signed in.
     func load() async -> ClaudeCodeCredentials?
+
+    /// Forget credentials the server rejected, so the next load reads the
+    /// keychain again instead of serving them until their stated expiry.
+    func invalidate(_ rejected: ClaudeCodeCredentials) async
 }
 
 /// Reads the OAuth credentials Claude Code stores in the login keychain.
@@ -59,6 +63,18 @@ actor ClaudeCodeCredentialsRepository: ClaudeCodeCredentialsRepositoryProtocol {
         startRead()
         await waitForRead()
         return cached
+    }
+
+    func invalidate(_ rejected: ClaudeCodeCredentials) {
+        // A read that landed while the rejected request was in flight may have
+        // already replaced the cache with a newer token; keep that one.
+        guard cached == rejected else { return }
+
+        // Signing in again revokes the old token before it expires, and a
+        // token without an expiry never expires on our clock at all — either
+        // way, holding on to it leaves the meter failing until relaunch.
+        cached = nil
+        nextAttemptAllowedAt = nil
     }
 
     /// Starts the keychain read off the actor, at most one at a time.

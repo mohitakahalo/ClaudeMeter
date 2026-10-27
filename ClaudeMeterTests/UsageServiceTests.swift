@@ -33,6 +33,32 @@ final class UsageServiceTests: XCTestCase {
         }
     }
 
+    func test_rejectedClaudeCodeToken_isInvalidatedSoItIsReadAgain() async {
+        let credentials = ClaudeCodeCredentials(
+            accessToken: "revoked-token",
+            expiresAt: Date().addingTimeInterval(8 * 60 * 60),
+            subscriptionType: nil
+        )
+        let credentialsRepository = ClaudeCodeCredentialsRepositoryStub(credentials: credentials)
+        let networkService = NetworkServiceStub(
+            responseData: Data(),
+            error: NetworkError.authenticationFailed
+        )
+
+        let service = UsageService(
+            networkService: networkService,
+            cacheRepository: CacheRepositoryFake(),
+            keychainRepository: KeychainRepositoryFake(),
+            settingsRepository: SettingsRepositoryFake(),
+            credentialsRepository: credentialsRepository
+        )
+
+        _ = try? await service.fetchUsage(forceRefresh: true)
+        let invalidated = await credentialsRepository.invalidated
+
+        XCTAssertEqual(invalidated, [credentials])
+    }
+
     func test_userWithCachedUsage_seesCachedValueWithoutNetworkCall() async throws {
         let expectedUsage = makeUsageData(percentage: TestConstants.sessionPercentage)
         let networkService = NetworkServiceStub(responseData: Data())

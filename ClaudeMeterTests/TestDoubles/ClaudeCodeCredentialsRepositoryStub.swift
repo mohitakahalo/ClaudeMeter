@@ -12,6 +12,7 @@ import Foundation
 actor ClaudeCodeCredentialsRepositoryStub: ClaudeCodeCredentialsRepositoryProtocol {
     private let credentials: ClaudeCodeCredentials?
     private(set) var loadCount = 0
+    private(set) var invalidated: [ClaudeCodeCredentials] = []
 
     /// Defaults to "Claude Code is not signed in", which keeps the browser
     /// session path under test.
@@ -22,5 +23,9 @@ actor ClaudeCodeCredentialsRepositoryStub: ClaudeCodeCredentialsRepositoryProtoc
     func load() async -> ClaudeCodeCredentials? {
         loadCount += 1
         return credentials
+    }
+
+    func invalidate(_ rejected: ClaudeCodeCredentials) async {
+        invalidated.append(rejected)
     }
 }
