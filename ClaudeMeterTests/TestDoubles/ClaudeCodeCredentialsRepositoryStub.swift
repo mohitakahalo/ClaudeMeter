@@ -10,7 +10,7 @@ import Foundation
 /// otherwise every result depends on whether Claude Code happens to be signed
 /// in on the machine running them.
 actor ClaudeCodeCredentialsRepositoryStub: ClaudeCodeCredentialsRepositoryProtocol {
-    private let credentials: ClaudeCodeCredentials?
+    private var credentials: ClaudeCodeCredentials?
     private(set) var loadCount = 0
     private(set) var invalidated: [ClaudeCodeCredentials] = []
 
@@ -23,6 +23,11 @@ actor ClaudeCodeCredentialsRepositoryStub: ClaudeCodeCredentialsRepositoryProtoc
     func load() async -> ClaudeCodeCredentials? {
         loadCount += 1
         return credentials
+    }
+
+    /// What Claude Code would leave in the keychain after renewing.
+    func replace(with credentials: ClaudeCodeCredentials?) {
+        self.credentials = credentials
     }
 
     func invalidate(_ rejected: ClaudeCodeCredentials) async {

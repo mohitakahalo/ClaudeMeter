@@ -23,6 +23,7 @@ func makeUsageData(
                 isActive: false
             )
         },
+        spendUsage: nil,
         lastUpdated: Date()
     )
 }

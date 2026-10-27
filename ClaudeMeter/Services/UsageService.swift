@@ -23,6 +23,7 @@ actor UsageService: UsageServiceProtocol {
     private let keychainRepository: KeychainRepositoryProtocol
     private let settingsRepository: SettingsRepositoryProtocol
     private let credentialsRepository: ClaudeCodeCredentialsRepositoryProtocol
+    private let tokenRenewer: ClaudeCodeTokenRenewerProtocol
 
     private let maxRetries = Constants.Network.maxRetries
     private let baseURL = Constants.API.claudeWebBase
@@ -35,13 +36,15 @@ actor UsageService: UsageServiceProtocol {
         cacheRepository: CacheRepositoryProtocol,
         keychainRepository: KeychainRepositoryProtocol,
         settingsRepository: SettingsRepositoryProtocol,
-        credentialsRepository: ClaudeCodeCredentialsRepositoryProtocol = ClaudeCodeCredentialsRepository()
+        credentialsRepository: ClaudeCodeCredentialsRepositoryProtocol = ClaudeCodeCredentialsRepository(),
+        tokenRenewer: ClaudeCodeTokenRenewerProtocol = ClaudeCodeTokenRenewer()
     ) {
         self.networkService = networkService
         self.cacheRepository = cacheRepository
         self.keychainRepository = keychainRepository
         self.settingsRepository = settingsRepository
         self.credentialsRepository = credentialsRepository
+        self.tokenRenewer = tokenRenewer
     }
 
     /// Fetch usage data with cache integration and exponential backoff retry
@@ -59,22 +62,17 @@ actor UsageService: UsageServiceProtocol {
         var oauthError: Error?
 
         if let credentials = await credentialsRepository.load() {
-            if credentials.isExpired {
-                Self.logger.warning("Claude Code token expired; falling back to browser session")
-                oauthError = AppError.claudeCodeTokenExpired
-            } else {
-                do {
-                    let usageData = try await fetchUsageWithOAuth(credentials)
-                    lastSuccessfulSource = .claudeCode
-                    await cacheRepository.set(usageData)
-                    return usageData
-                } catch {
-                    // Public: an error description is a diagnosis, not a secret,
-                    // and redacting it leaves the log saying only that
-                    // something failed.
-                    Self.logger.error("OAuth usage fetch failed: \(String(describing: error), privacy: .public)")
-                    oauthError = error
-                }
+            do {
+                let usageData = try await fetchUsageWithClaudeCode(credentials)
+                lastSuccessfulSource = .claudeCode
+                await cacheRepository.set(usageData)
+                return usageData
+            } catch {
+                // Public: an error description is a diagnosis, not a secret,
+                // and redacting it leaves the log saying only that
+                // something failed.
+                Self.logger.error("OAuth usage fetch failed: \(String(describing: error), privacy: .public)")
+                oauthError = error
             }
         }
 
@@ -132,6 +130,28 @@ actor UsageService: UsageServiceProtocol {
     }
 
     // MARK: - Claude Code (OAuth)
+
+    /// Fetches with Claude Code's token, getting Claude Code to renew it first
+    /// when it has expired or the server has turned it away.
+    private func fetchUsageWithClaudeCode(_ credentials: ClaudeCodeCredentials) async throws -> UsageData {
+        if !credentials.isExpired {
+            do {
+                return try await fetchUsageWithOAuth(credentials)
+            } catch AppError.claudeCodeTokenExpired {
+                // Revoked before its stated expiry; renewal may still help.
+            }
+        }
+
+        guard await tokenRenewer.renew(),
+              let renewed = await credentialsRepository.load(),
+              renewed != credentials,
+              !renewed.isExpired else {
+            Self.logger.warning("Claude Code token expired and could not be renewed; falling back to browser session")
+            throw AppError.claudeCodeTokenExpired
+        }
+
+        return try await fetchUsageWithOAuth(renewed)
+    }
 
     /// A single blip must not demote the preferred source, so transient failures
     /// are retried here rather than falling straight through to the cookie path

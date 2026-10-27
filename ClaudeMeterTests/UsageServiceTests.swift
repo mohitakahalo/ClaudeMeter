@@ -34,15 +34,11 @@ final class UsageServiceTests: XCTestCase {
     }
 
     func test_rejectedClaudeCodeToken_isInvalidatedSoItIsReadAgain() async {
-        let credentials = ClaudeCodeCredentials(
-            accessToken: "revoked-token",
-            expiresAt: Date().addingTimeInterval(8 * 60 * 60),
-            subscriptionType: nil
-        )
+        let credentials = makeClaudeCodeCredentials(token: "revoked-token")
         let credentialsRepository = ClaudeCodeCredentialsRepositoryStub(credentials: credentials)
         let networkService = NetworkServiceStub(
             responseData: Data(),
-            error: NetworkError.authenticationFailed
+            rejectedBearerTokens: ["revoked-token"]
         )
 
         let service = UsageService(
@@ -50,13 +46,102 @@ final class UsageServiceTests: XCTestCase {
             cacheRepository: CacheRepositoryFake(),
             keychainRepository: KeychainRepositoryFake(),
             settingsRepository: SettingsRepositoryFake(),
-            credentialsRepository: credentialsRepository
+            credentialsRepository: credentialsRepository,
+            tokenRenewer: ClaudeCodeTokenRenewerStub()
         )
 
         _ = try? await service.fetchUsage(forceRefresh: true)
         let invalidated = await credentialsRepository.invalidated
 
         XCTAssertEqual(invalidated, [credentials])
+    }
+
+    func test_expiredClaudeCodeToken_isRenewedThroughClaudeCodeAndUsed() async throws {
+        let expired = makeClaudeCodeCredentials(token: "expired-token", expiresIn: -60)
+        let renewed = makeClaudeCodeCredentials(token: "renewed-token")
+        let credentialsRepository = ClaudeCodeCredentialsRepositoryStub(credentials: expired)
+        let tokenRenewer = ClaudeCodeTokenRenewerStub {
+            await credentialsRepository.replace(with: renewed)
+            return true
+        }
+        let networkService = NetworkServiceStub(responseData: try makeDefaultUsageResponseData())
+
+        let service = UsageService(
+            networkService: networkService,
+            cacheRepository: CacheRepositoryFake(),
+            keychainRepository: KeychainRepositoryFake(),
+            settingsRepository: SettingsRepositoryFake(),
+            credentialsRepository: credentialsRepository,
+            tokenRenewer: tokenRenewer
+        )
+
+        let usageData = try await service.fetchUsage(forceRefresh: true)
+        let bearerTokens = await networkService.bearerTokens
+        let renewCount = await tokenRenewer.renewCount
+        let source = await service.activeSource()
+
+        XCTAssertEqual(usageData.sessionUsage.utilization, TestConstants.sessionPercentage)
+        XCTAssertEqual(bearerTokens, ["renewed-token"])
+        XCTAssertEqual(renewCount, 1)
+        XCTAssertEqual(source, .claudeCode)
+    }
+
+    func test_revokedClaudeCodeToken_isRenewedAndRetried() async throws {
+        let revoked = makeClaudeCodeCredentials(token: "revoked-token")
+        let renewed = makeClaudeCodeCredentials(token: "renewed-token")
+        let credentialsRepository = ClaudeCodeCredentialsRepositoryStub(credentials: revoked)
+        let tokenRenewer = ClaudeCodeTokenRenewerStub {
+            await credentialsRepository.replace(with: renewed)
+            return true
+        }
+        let networkService = NetworkServiceStub(
+            responseData: try makeDefaultUsageResponseData(),
+            rejectedBearerTokens: ["revoked-token"]
+        )
+
+        let service = UsageService(
+            networkService: networkService,
+            cacheRepository: CacheRepositoryFake(),
+            keychainRepository: KeychainRepositoryFake(),
+            settingsRepository: SettingsRepositoryFake(),
+            credentialsRepository: credentialsRepository,
+            tokenRenewer: tokenRenewer
+        )
+
+        _ = try await service.fetchUsage(forceRefresh: true)
+        let bearerTokens = await networkService.bearerTokens
+
+        XCTAssertEqual(bearerTokens, ["revoked-token", "renewed-token"])
+    }
+
+    func test_expiredClaudeCodeToken_thatCannotBeRenewed_reportsExpiry() async {
+        let expired = makeClaudeCodeCredentials(token: "expired-token", expiresIn: -60)
+        let tokenRenewer = ClaudeCodeTokenRenewerStub()
+        let networkService = NetworkServiceStub(responseData: Data())
+
+        let service = UsageService(
+            networkService: networkService,
+            cacheRepository: CacheRepositoryFake(),
+            keychainRepository: KeychainRepositoryFake(),
+            settingsRepository: SettingsRepositoryFake(),
+            credentialsRepository: ClaudeCodeCredentialsRepositoryStub(credentials: expired),
+            tokenRenewer: tokenRenewer
+        )
+
+        do {
+            _ = try await service.fetchUsage(forceRefresh: true)
+            XCTFail("Expected claudeCodeTokenExpired error")
+        } catch AppError.claudeCodeTokenExpired {
+            // Expected: no session key either, so the OAuth diagnosis stands
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        let bearerTokens = await networkService.bearerTokens
+        let renewCount = await tokenRenewer.renewCount
+
+        XCTAssertEqual(bearerTokens, [])
+        XCTAssertEqual(renewCount, 1)
     }
 
     func test_userWithCachedUsage_seesCachedValueWithoutNetworkCall() async throws {
@@ -128,9 +213,9 @@ final class UsageServiceTests: XCTestCase {
         let requestCount = await networkService.requestCount
 
         XCTAssertEqual(usageData.sessionUsage.utilization, expectedSessionPercentage)
-        XCTAssertEqual(usageData.weeklyUsage.utilization, expectedWeeklyPercentage)
+        XCTAssertEqual(usageData.weeklyUsage?.utilization, expectedWeeklyPercentage)
         XCTAssertEqual(cachedData?.sessionUsage.utilization, expectedSessionPercentage)
-        XCTAssertEqual(cachedData?.weeklyUsage.utilization, expectedWeeklyPercentage)
+        XCTAssertEqual(cachedData?.weeklyUsage?.utilization, expectedWeeklyPercentage)
         XCTAssertEqual(requestCount, 1)
     }
 
@@ -207,9 +292,9 @@ final class UsageServiceTests: XCTestCase {
         let usageData = try await service.fetchUsage(forceRefresh: true)
 
         XCTAssertEqual(usageData.sessionUsage.utilization, TestConstants.sessionPercentage)
-        XCTAssertEqual(usageData.weeklyUsage.utilization, TestConstants.weeklyPercentage)
+        XCTAssertEqual(usageData.weeklyUsage?.utilization, TestConstants.weeklyPercentage)
         assertDate(usageData.sessionUsage.resetAt, equalsIso8601String: TestConstants.sessionResetDateString)
-        assertDate(usageData.weeklyUsage.resetAt, equalsIso8601String: TestConstants.weeklyResetDateString)
+        assertDate(try XCTUnwrap(usageData.weeklyUsage).resetAt, equalsIso8601String: TestConstants.weeklyResetDateString)
     }
 
     func test_usageFetch_withMissingResetAt_usesFallbackWindow() async throws {
@@ -373,3 +458,25 @@ private func makeUsageResponseData(
 }
 
 
+
+private func makeDefaultUsageResponseData() throws -> Data {
+    try makeUsageResponseData(
+        sessionUtilization: TestConstants.sessionPercentage,
+        weeklyUtilization: TestConstants.weeklyPercentage,
+        sessionResetAt: TestConstants.sessionResetDateString,
+        weeklyResetAt: TestConstants.weeklyResetDateString,
+        sonnetUtilization: nil,
+        sonnetResetAt: nil
+    )
+}
+
+private func makeClaudeCodeCredentials(
+    token: String,
+    expiresIn: TimeInterval = 8 * 60 * 60
+) -> ClaudeCodeCredentials {
+    ClaudeCodeCredentials(
+        accessToken: token,
+        expiresAt: Date().addingTimeInterval(expiresIn),
+        subscriptionType: nil
+    )
+}

@@ -63,7 +63,7 @@ final class UsageAPIResponseTests: XCTestCase {
         let usageData = try decode(liveResponse).toDomain()
 
         XCTAssertEqual(usageData.sessionUsage.utilization, 30)
-        XCTAssertEqual(usageData.weeklyUsage.utilization, 40)
+        XCTAssertEqual(usageData.weeklyUsage?.utilization, 40)
     }
 
     func test_toDomain_withLimitsArray_surfacesScopedModelByDisplayName() throws {
@@ -159,7 +159,7 @@ final class UsageAPIResponseTests: XCTestCase {
 
         let usageData = try decode(json).toDomain()
 
-        XCTAssertEqual(usageData.weeklyUsage.utilization, 14)
+        XCTAssertEqual(usageData.weeklyUsage?.utilization, 14)
         XCTAssertTrue(usageData.scopedUsage.isEmpty)
     }
 
@@ -177,7 +177,7 @@ final class UsageAPIResponseTests: XCTestCase {
         let usageData = try decode(json).toDomain()
 
         XCTAssertEqual(usageData.sessionUsage.utilization, 40)
-        XCTAssertEqual(usageData.weeklyUsage.utilization, 50)
+        XCTAssertEqual(usageData.weeklyUsage?.utilization, 50)
         XCTAssertEqual(usageData.scopedUsage.map(\.name), ["Sonnet"])
         XCTAssertEqual(usageData.scopedUsage.first?.limit.utilization, 25)
     }
@@ -199,7 +199,7 @@ final class UsageAPIResponseTests: XCTestCase {
         let usageData = try decode(json).toDomain()
 
         assertDate(usageData.sessionUsage.resetAt, equalsIso8601String: "2026-01-01T12:00:00.123456+00:00")
-        assertDate(usageData.weeklyUsage.resetAt, equalsIso8601String: "2026-01-05T00:00:00.000Z")
+        assertDate(try XCTUnwrap(usageData.weeklyUsage).resetAt, equalsIso8601String: "2026-01-05T00:00:00.000Z")
     }
 
     // MARK: - Helpers

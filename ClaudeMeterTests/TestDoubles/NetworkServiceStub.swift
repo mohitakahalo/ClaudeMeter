@@ -13,10 +13,32 @@ actor NetworkServiceStub: NetworkServiceProtocol {
     private let error: Error?
     private(set) var requestCount: Int = 0
     private(set) var lastEndpoint: String?
+    private(set) var bearerTokens: [String] = []
+    private let rejectedBearerTokens: Set<String>
 
-    init(responseData: Data, error: Error? = nil) {
+    init(responseData: Data, error: Error? = nil, rejectedBearerTokens: Set<String> = []) {
         self.responseData = responseData
         self.error = error
+        self.rejectedBearerTokens = rejectedBearerTokens
+    }
+
+    func request<T: Decodable>(
+        _ endpoint: String,
+        method: HTTPMethod,
+        authorization: APIAuthorization
+    ) async throws -> T {
+        switch authorization {
+        case .sessionCookie(let key):
+            return try await request(endpoint, method: method, sessionKey: key)
+        case .bearer(let token):
+            bearerTokens.append(token)
+            if rejectedBearerTokens.contains(token) {
+                requestCount += 1
+                lastEndpoint = endpoint
+                throw NetworkError.authenticationFailed
+            }
+            return try await request(endpoint, method: method, sessionKey: token)
+        }
     }
 
     func request<T: Decodable>(

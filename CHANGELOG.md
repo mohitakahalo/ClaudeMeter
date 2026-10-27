@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Have Claude Code renew its OAuth token when it has expired or been revoked,
+  by running `claude -p /usage` (no model request, no quota used), so the
+  meter no longer stops after a day without a Claude Code session
+- Re-read Claude Code's token after the server rejects it instead of retrying
+  the rejected one until its stated expiry
+- Skip app bootstrap when launched as the XCTest host
+- Bring the test suite and Debug-only demo data up to date with the optional
+  weekly limit and the `spendUsage` field
+
 ## [1.4.2] - 2026-08-17
 
 ### Fixed

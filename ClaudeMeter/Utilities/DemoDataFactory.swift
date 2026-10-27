@@ -104,6 +104,7 @@ enum DemoDataFactory {
                     isActive: index == 0
                 )
             },
+            spendUsage: nil,
             lastUpdated: Date()
         )
     }
